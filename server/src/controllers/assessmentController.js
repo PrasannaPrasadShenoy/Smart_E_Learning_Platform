@@ -157,11 +157,12 @@ const completeAssessment = asyncHandler(async (req, res) => {
   const processedAnswers = [];
 
   for (const answer of answers) {
-    const question = await questionService.getQuestionsForAssessment(
+    const questions = await questionService.getQuestionsForAssessment(
       assessment.courseId,
       assessment.videoId,
       1
-    ).then(questions => questions.find(q => q._id.toString() === answer.questionId));
+    );
+    const question = questions.find(q => q._id.toString() === answer.questionId);
 
     if (!question) {
       continue; // Skip invalid questions

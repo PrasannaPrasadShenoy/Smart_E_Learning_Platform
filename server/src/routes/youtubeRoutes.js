@@ -9,7 +9,11 @@ const {
   getVideoDetails,
   searchCourses,
   savePlaylist,
-  getVideoContext
+  getVideoContext,
+  getVideoWithContent,
+  generateCourseTest,
+  getVideoNotes,
+  getVideoQuestions
 } = require('../controllers/youtubeController');
 const { authenticateToken, optionalAuth } = require('../middlewares/authMiddleware');
 
@@ -74,5 +78,11 @@ router.get('/video/:videoId', videoIdValidation, getVideoDetails);
 router.get('/video/:videoId/context', videoIdValidation, getVideoContext);
 router.get('/search-courses', searchValidation, searchCourses);
 router.post('/save-playlist', authenticateToken, savePlaylist);
+
+// AI-powered routes
+router.get('/video/:videoId/content', videoIdValidation, getVideoWithContent);
+router.get('/video/:videoId/notes', videoIdValidation, getVideoNotes);
+router.get('/video/:videoId/questions', videoIdValidation, getVideoQuestions);
+router.post('/course/:courseId/test', courseIdValidation, generateCourseTest);
 
 module.exports = router;

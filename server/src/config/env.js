@@ -6,6 +6,7 @@ const config = {
   mongoUri: process.env.MONGO_URI,
   jwtSecret: process.env.JWT_SECRET,
   openaiApiKey: process.env.OPENAI_API_KEY,
+  geminiApiKey: process.env.GEMINI_API_KEY,
   youtubeApiKey: process.env.YOUTUBE_DATA_API_KEY,
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 };

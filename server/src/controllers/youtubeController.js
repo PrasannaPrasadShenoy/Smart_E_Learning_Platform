@@ -1,8 +1,11 @@
 const { validationResult } = require('express-validator');
 const youtubeService = require('../services/youtubeService');
 const transcriptService = require('../services/transcriptService');
+const summaryService = require('../services/summaryService');
+const questionService = require('../services/questionService');
 const { asyncHandler } = require('../middlewares/errorHandler');
 const SavedPlaylist = require('../models/SavedPlaylist');
+const Course = require('../models/Course');
 
 /**
  * Search for YouTube playlists
@@ -435,6 +438,239 @@ const getVideoContext = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Get video with AI-generated content (notes and questions)
+ */
+const getVideoWithContent = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+  const { difficulty = 'intermediate' } = req.query;
+
+  if (!videoId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Video ID is required'
+    });
+  }
+
+  try {
+    console.log(`Generating AI content for video: ${videoId}`);
+    
+    // Get transcript
+    const transcript = await transcriptService.getTranscript(videoId);
+    if (!transcript) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transcript not available for this video'
+      });
+    }
+
+    // Generate notes and questions in parallel
+    const [notes, questions] = await Promise.all([
+      summaryService.generateAllNotes(transcript),
+      questionService.generateVideoQuestions(transcript, videoId, null, difficulty)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        transcript,
+        notes: {
+          short: notes.shortNotes,
+          detailed: notes.detailedNotes,
+          generatedAt: notes.generatedAt,
+          fallback: notes.fallback || false
+        },
+        questions: questions.map(q => ({
+          id: q._id,
+          question: q.question,
+          type: q.metadata.type,
+          options: q.options,
+          difficulty: q.difficulty,
+          topic: q.topic
+        })),
+        totalQuestions: questions.length
+      }
+    });
+  } catch (error) {
+    console.error('Error generating video content:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating AI content for video'
+    });
+  }
+});
+
+/**
+ * Generate comprehensive course test
+ */
+const generateCourseTest = asyncHandler(async (req, res) => {
+  const { courseId } = req.params;
+  const { difficulty = 'intermediate' } = req.body;
+
+  if (!courseId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Course ID is required'
+    });
+  }
+
+  try {
+    console.log(`Generating course test for course: ${courseId}`);
+    
+    // Get course and all video transcripts
+    const course = await Course.findOne({ playlistId: courseId });
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: 'Course not found'
+      });
+    }
+
+    // Get all video transcripts
+    const transcripts = [];
+    for (const video of course.videos) {
+      try {
+        const transcript = await transcriptService.getTranscript(video.videoId);
+        if (transcript) {
+          transcripts.push(transcript);
+        }
+      } catch (error) {
+        console.log(`Transcript not available for video: ${video.videoId}`);
+      }
+    }
+
+    if (transcripts.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No transcripts available for course videos'
+      });
+    }
+
+    // Generate comprehensive test
+    const questions = await questionService.generateCourseTest(transcripts, courseId, difficulty);
+
+    res.json({
+      success: true,
+      data: {
+        courseId,
+        courseTitle: course.title,
+        questions: questions.map(q => ({
+          id: q._id,
+          question: q.question,
+          type: q.metadata.type,
+          options: q.options,
+          difficulty: q.difficulty,
+          topic: q.topic
+        })),
+        totalQuestions: questions.length,
+        difficulty
+      }
+    });
+  } catch (error) {
+    console.error('Error generating course test:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating course test'
+    });
+  }
+});
+
+/**
+ * Get video notes only
+ */
+const getVideoNotes = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  if (!videoId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Video ID is required'
+    });
+  }
+
+  try {
+    const transcript = await transcriptService.getTranscript(videoId);
+    if (!transcript) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transcript not available for this video'
+      });
+    }
+
+    const notes = await summaryService.generateAllNotes(transcript);
+
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        notes: {
+          short: notes.shortNotes,
+          detailed: notes.detailedNotes,
+          generatedAt: notes.generatedAt,
+          fallback: notes.fallback || false
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error generating video notes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating video notes'
+    });
+  }
+});
+
+/**
+ * Get video questions only
+ */
+const getVideoQuestions = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+  const { difficulty = 'intermediate' } = req.query;
+
+  if (!videoId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Video ID is required'
+    });
+  }
+
+  try {
+    const transcript = await transcriptService.getTranscript(videoId);
+    if (!transcript) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transcript not available for this video'
+      });
+    }
+
+    const questions = await questionService.generateVideoQuestions(transcript, videoId, null, difficulty);
+
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        questions: questions.map(q => ({
+          id: q._id,
+          question: q.question,
+          type: q.metadata.type,
+          options: q.options,
+          difficulty: q.difficulty,
+          topic: q.topic
+        })),
+        totalQuestions: questions.length,
+        difficulty
+      }
+    });
+  } catch (error) {
+    console.error('Error generating video questions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating video questions'
+    });
+  }
+});
+
 module.exports = {
   searchPlaylists,
   getPlaylistDetails,
@@ -444,5 +680,9 @@ module.exports = {
   getVideoDetails,
   searchCourses,
   savePlaylist,
-  getVideoContext
+  getVideoContext,
+  getVideoWithContent,
+  generateCourseTest,
+  getVideoNotes,
+  getVideoQuestions
 };
