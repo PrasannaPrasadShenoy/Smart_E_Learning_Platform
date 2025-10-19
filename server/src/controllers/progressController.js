@@ -1,0 +1,235 @@
+const { asyncHandler } = require('../middlewares/errorHandler');
+const UserProgress = require('../models/UserProgress');
+const Course = require('../models/Course');
+
+/**
+ * Get user progress for a specific course
+ */
+const getCourseProgress = asyncHandler(async (req, res) => {
+  const { courseId } = req.params;
+  const userId = req.user.id;
+
+  try {
+    let progress = await UserProgress.findOne({ userId, courseId });
+    
+    if (!progress) {
+      // Create new progress entry if it doesn't exist
+      const course = await Course.findOne({ playlistId: courseId });
+      if (!course) {
+        return res.status(404).json({
+          success: false,
+          message: 'Course not found'
+        });
+      }
+
+      progress = new UserProgress({
+        userId,
+        courseId,
+        courseTitle: course.title,
+        totalVideos: course.videos.length,
+        completedVideos: [],
+        completionPercentage: 0,
+        testScores: [],
+        averageTestScore: 0,
+        totalWatchTime: 0,
+      });
+
+      await progress.save();
+    }
+
+    res.json({
+      success: true,
+      data: {
+        progress: {
+          courseId: progress.courseId,
+          courseTitle: progress.courseTitle,
+          totalVideos: progress.totalVideos,
+          completedVideos: progress.completedVideos,
+          completionPercentage: progress.completionPercentage,
+          testScores: progress.testScores,
+          averageTestScore: progress.averageTestScore,
+          lastWatchedVideo: progress.lastWatchedVideo,
+          totalWatchTime: progress.totalWatchTime,
+          startedAt: progress.startedAt,
+          lastUpdated: progress.lastUpdated,
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching course progress:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching course progress'
+    });
+  }
+});
+
+/**
+ * Get all user progress
+ */
+const getAllUserProgress = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const progressList = await UserProgress.find({ userId })
+      .sort({ lastUpdated: -1 })
+      .populate('testScores.assessmentId', 'score totalQuestions createdAt');
+
+    res.json({
+      success: true,
+      data: {
+        progress: progressList.map(p => ({
+          courseId: p.courseId,
+          courseTitle: p.courseTitle,
+          totalVideos: p.totalVideos,
+          completedVideos: p.completedVideos.length,
+          completionPercentage: p.completionPercentage,
+          testScores: p.testScores.length,
+          averageTestScore: p.averageTestScore,
+          lastWatchedVideo: p.lastWatchedVideo,
+          totalWatchTime: p.totalWatchTime,
+          startedAt: p.startedAt,
+          lastUpdated: p.lastUpdated,
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user progress:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching user progress'
+    });
+  }
+});
+
+/**
+ * Mark video as completed
+ */
+const markVideoCompleted = asyncHandler(async (req, res) => {
+  const { courseId, videoId, videoTitle, watchTime } = req.body;
+  const userId = req.user.id;
+
+  try {
+    let progress = await UserProgress.findOne({ userId, courseId });
+    
+    if (!progress) {
+      // Create new progress entry
+      const course = await Course.findOne({ playlistId: courseId });
+      if (!course) {
+        return res.status(404).json({
+          success: false,
+          message: 'Course not found'
+        });
+      }
+
+      progress = new UserProgress({
+        userId,
+        courseId,
+        courseTitle: course.title,
+        totalVideos: course.videos.length,
+        completedVideos: [],
+        completionPercentage: 0,
+        testScores: [],
+        averageTestScore: 0,
+        totalWatchTime: 0,
+      });
+    }
+
+    await progress.updateProgress(videoId, videoTitle, watchTime);
+
+    res.json({
+      success: true,
+      message: 'Video marked as completed',
+      data: {
+        completionPercentage: progress.completionPercentage,
+        completedVideos: progress.completedVideos.length,
+        totalVideos: progress.totalVideos,
+      }
+    });
+  } catch (error) {
+    console.error('Error marking video as completed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error marking video as completed'
+    });
+  }
+});
+
+/**
+ * Add test score to course progress
+ */
+const addTestScore = asyncHandler(async (req, res) => {
+  const { courseId, assessmentId, score, totalQuestions } = req.body;
+  const userId = req.user.id;
+
+  try {
+    let progress = await UserProgress.findOne({ userId, courseId });
+    
+    if (!progress) {
+      return res.status(404).json({
+        success: false,
+        message: 'Course progress not found. Please start watching videos first.'
+      });
+    }
+
+    await progress.addTestScore(assessmentId, score, totalQuestions);
+
+    res.json({
+      success: true,
+      message: 'Test score added successfully',
+      data: {
+        averageTestScore: progress.averageTestScore,
+        totalTests: progress.testScores.length,
+      }
+    });
+  } catch (error) {
+    console.error('Error adding test score:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error adding test score'
+    });
+  }
+});
+
+/**
+ * Get user progress statistics
+ */
+const getProgressStats = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const progressList = await UserProgress.find({ userId });
+    
+    const stats = {
+      totalCourses: progressList.length,
+      totalVideosWatched: progressList.reduce((sum, p) => sum + p.completedVideos.length, 0),
+      totalWatchTime: progressList.reduce((sum, p) => sum + p.totalWatchTime, 0),
+      averageCompletion: progressList.length > 0 
+        ? Math.round(progressList.reduce((sum, p) => sum + p.completionPercentage, 0) / progressList.length)
+        : 0,
+      averageTestScore: progressList.length > 0
+        ? Math.round(progressList.reduce((sum, p) => sum + p.averageTestScore, 0) / progressList.length)
+        : 0,
+      completedCourses: progressList.filter(p => p.completionPercentage === 100).length,
+    };
+
+    res.json({
+      success: true,
+      data: { stats }
+    });
+  } catch (error) {
+    console.error('Error fetching progress stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching progress stats'
+    });
+  }
+});
+
+module.exports = {
+  getCourseProgress,
+  getAllUserProgress,
+  markVideoCompleted,
+  addTestScore,
+  getProgressStats,
+};
