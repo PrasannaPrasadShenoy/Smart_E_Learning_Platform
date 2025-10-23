@@ -1,5 +1,5 @@
 const youtubeService = require('./youtubeService');
-const { summarizeTranscript } = require('../utils/openaiHelper');
+const geminiService = require('./geminiService');
 
 class TranscriptService {
   /**
@@ -10,36 +10,62 @@ class TranscriptService {
    */
   async getTranscript(videoId, summarize = false) {
     try {
-      // Get raw transcript
-      const transcript = await youtubeService.getVideoTranscript(videoId);
+      console.log(`Fetching transcript for video: ${videoId}`);
       
-      if (!transcript || transcript.trim().length === 0) {
+      // Get transcript with language detection
+      const transcriptData = await youtubeService.getVideoTranscript(videoId);
+      
+      console.log('Transcript data received:', {
+        hasTranscript: transcriptData?.hasTranscript,
+        wordCount: transcriptData?.wordCount,
+        language: transcriptData?.language
+      });
+      
+      if (!transcriptData || !transcriptData.hasTranscript) {
+        console.log('No transcript available for video:', videoId);
         throw new Error('No transcript available for this video');
       }
 
       const result = {
         videoId,
-        transcript,
-        wordCount: transcript.split(' ').length,
-        duration: transcript.length,
+        transcript: transcriptData.transcript,
+        language: transcriptData.language,
+        wordCount: transcriptData.wordCount,
+        duration: transcriptData.duration,
         hasTranscript: true
       };
 
-      // Summarize if requested
+      console.log('Transcript processed successfully:', {
+        wordCount: result.wordCount,
+        language: result.language,
+        hasTranscript: result.hasTranscript
+      });
+
+      // Summarize if requested (always in English)
       if (summarize) {
         try {
-          result.summary = await summarizeTranscript(transcript);
+          result.summary = await geminiService.summarizeTranscript(transcriptData.transcript, transcriptData.language);
         } catch (error) {
           console.error('Summarization error:', error.message);
-          result.summary = transcript.substring(0, 500) + '...';
+          result.summary = transcriptData.transcript.substring(0, 500) + '...';
         }
       }
 
       return result;
 
     } catch (error) {
-      console.error('Transcript service error:', error.message);
-      throw new Error('Failed to process video transcript');
+      console.error('Transcript service error for video:', videoId, error.message);
+      console.error('Full error:', error);
+      
+      // Return a fallback transcript instead of throwing error
+      return {
+        videoId,
+        transcript: 'This video does not have a transcript available. Please try another video.',
+        language: 'en',
+        wordCount: 0,
+        duration: 0,
+        hasTranscript: false
+      };
     }
   }
 

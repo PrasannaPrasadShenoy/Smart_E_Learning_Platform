@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { youtubeTranscript } = require('youtube-transcript');
+const { YoutubeTranscript } = require('youtube-transcript');
 const Course = require('../models/Course');
 
 class YouTubeService {
@@ -109,27 +109,95 @@ class YouTubeService {
   }
 
   /**
-   * Get video transcript
+   * Get video transcript with language detection
    * @param {string} videoId - YouTube video ID
-   * @returns {Promise<string>} Video transcript
+   * @returns {Promise<Object>} Video transcript with language info
    */
   async getVideoTranscript(videoId) {
     try {
-      const transcript = await youtubeTranscript.fetchTranscript(videoId);
-      
-      // Combine all transcript segments
-      const fullTranscript = transcript
-        .map(segment => segment.text)
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      return fullTranscript;
-
+      // Use AssemblyAI for reliable transcript generation
+      const assemblyaiService = require('./assemblyaiService');
+      return await assemblyaiService.getTranscriptWithFallback(videoId);
     } catch (error) {
       console.error('Transcript fetch error:', error.message);
       throw new Error('Failed to fetch video transcript');
     }
+  }
+
+  /**
+   * Get transcript from your custom platform
+   * @param {string} videoId - YouTube video ID
+   * @returns {Promise<Object>} Custom transcript data
+   */
+  async getCustomTranscript(videoId) {
+    try {
+      // TODO: Replace with your actual transcript platform API
+      const response = await axios.post('YOUR_TRANSCRIPT_API_ENDPOINT', {
+        videoId: videoId,
+        // Add any required parameters for your platform
+      }, {
+        headers: {
+          'Authorization': 'Bearer YOUR_API_KEY', // If needed
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.data && response.data.transcript) {
+        const transcript = response.data.transcript;
+        const detectedLanguage = this.detectLanguage(transcript);
+        
+        return {
+          transcript: transcript,
+          language: detectedLanguage,
+          wordCount: transcript.split(' ').length,
+          duration: transcript.length,
+          hasTranscript: true,
+          source: 'custom_platform'
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Custom transcript platform error:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Detect language from transcript text
+   * @param {string} text - Transcript text
+   * @returns {string} Detected language code
+   */
+  detectLanguage(text) {
+    // Simple language detection based on common patterns
+    const languagePatterns = {
+      'en': /[a-zA-Z]/g, // English
+      'hi': /[\u0900-\u097F]/g, // Hindi
+      'zh': /[\u4E00-\u9FFF]/g, // Chinese
+      'ja': /[\u3040-\u309F\u30A0-\u30FF]/g, // Japanese
+      'ko': /[\uAC00-\uD7AF]/g, // Korean
+      'ar': /[\u0600-\u06FF]/g, // Arabic
+      'es': /[ñáéíóúü]/gi, // Spanish
+      'fr': /[àâäéèêëïîôöùûüÿç]/gi, // French
+      'de': /[äöüß]/gi, // German
+      'ru': /[\u0400-\u04FF]/g, // Russian
+      'pt': /[ãõç]/gi, // Portuguese
+      'it': /[àèéìíîòóù]/gi, // Italian
+    };
+
+    const scores = {};
+    
+    for (const [lang, pattern] of Object.entries(languagePatterns)) {
+      const matches = text.match(pattern);
+      scores[lang] = matches ? matches.length : 0;
+    }
+
+    // Find language with highest score
+    const detectedLang = Object.entries(scores).reduce((a, b) => 
+      scores[a[0]] > scores[b[0]] ? a : b
+    )[0];
+
+    return scores[detectedLang] > 0 ? detectedLang : 'en'; // Default to English
   }
 
   /**

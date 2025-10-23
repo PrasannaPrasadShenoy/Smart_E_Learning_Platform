@@ -63,8 +63,7 @@ const assessmentSchema = new mongoose.Schema({
     required: true
   },
   courseId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Course',
+    type: String, // Changed to String to handle YouTube playlist IDs
     required: true
   },
   videoId: {
@@ -77,28 +76,28 @@ const assessmentSchema = new mongoose.Schema({
     type: Number,
     min: 0,
     max: 100,
-    required: true
+    required: false // Will be set when assessment is completed
   },
   cli: {
     type: Number,
     min: 0,
     max: 100,
-    required: true
+    required: false // Will be set when assessment is completed
   },
   cliClassification: {
     type: String,
     enum: ['Low Load', 'Moderate Load', 'High Load'],
-    required: true
+    required: false // Will be set when assessment is completed
   },
   confidence: {
     type: Number,
     min: 1,
     max: 5,
-    required: true
+    required: false // Will be set when assessment is completed
   },
   timeSpent: {
     type: Number, // total time in seconds
-    required: true
+    required: false // Will be set when assessment is completed
   },
   status: {
     type: String,

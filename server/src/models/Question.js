@@ -2,8 +2,7 @@ const mongoose = require('mongoose');
 
 const questionSchema = new mongoose.Schema({
   courseId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Course',
+    type: String, // Changed to String to handle YouTube playlist IDs
     required: true
   },
   videoId: {
@@ -31,7 +30,7 @@ const questionSchema = new mongoose.Schema({
   },
   difficulty: {
     type: String,
-    enum: ['easy', 'medium', 'hard'],
+    enum: ['easy', 'medium', 'hard', 'intermediate'],
     default: 'medium'
   },
   topic: {
@@ -49,8 +48,8 @@ const questionSchema = new mongoose.Schema({
   metadata: {
     generatedBy: {
       type: String,
-      enum: ['openai', 'template', 'manual'],
-      default: 'openai'
+      enum: ['gemini', 'template', 'manual', 'fallback'],
+      default: 'gemini'
     },
     confidence: {
       type: Number,

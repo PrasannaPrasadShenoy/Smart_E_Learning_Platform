@@ -10,8 +10,30 @@ class CLIService {
    */
   async processMetrics(metrics, assessmentData) {
     try {
+      // Handle case where no metrics are provided (fallback to default values)
       if (!metrics || metrics.length === 0) {
-        throw new Error('No metrics provided');
+        console.log('No cognitive metrics provided, using default values');
+        const defaultMetrics = {
+          avgOnScreen: 85,
+          blinkRatePerMin: 15,
+          headMovement: 0,
+          eyeGazeStability: 85
+        };
+        
+        const cliResult = computeCLI({
+          focusPct: defaultMetrics.avgOnScreen,
+          blinkRate: defaultMetrics.blinkRatePerMin,
+          timeSpent: assessmentData.timeSpent || 30,
+          metrics: defaultMetrics,
+          averageTime: 30
+        });
+
+        return {
+          ...cliResult,
+          avgMetrics: defaultMetrics,
+          totalMetrics: 0,
+          processingTime: new Date().toISOString()
+        };
       }
 
       // Calculate average metrics
@@ -35,7 +57,32 @@ class CLIService {
 
     } catch (error) {
       console.error('CLI processing error:', error.message);
-      throw new Error('Failed to process cognitive metrics');
+      console.error('Error details:', error);
+      
+      // Return default CLI values instead of throwing error
+      console.log('Returning default CLI values due to processing error');
+      const defaultMetrics = {
+        avgOnScreen: 85,
+        blinkRatePerMin: 15,
+        headMovement: 0,
+        eyeGazeStability: 85
+      };
+      
+      const cliResult = computeCLI({
+        focusPct: defaultMetrics.avgOnScreen,
+        blinkRate: defaultMetrics.blinkRatePerMin,
+        timeSpent: assessmentData.timeSpent || 30,
+        metrics: defaultMetrics,
+        averageTime: 30
+      });
+
+      return {
+        ...cliResult,
+        avgMetrics: defaultMetrics,
+        totalMetrics: 0,
+        processingTime: new Date().toISOString(),
+        error: 'Used default values due to processing error'
+      };
     }
   }
 

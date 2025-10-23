@@ -1,5 +1,5 @@
 const Feedback = require('../models/Feedback');
-const { generateFeedback, generateFallbackFeedback } = require('../utils/openaiHelper');
+const geminiService = require('./geminiService');
 const cliService = require('./cliService');
 
 class FeedbackService {
@@ -28,13 +28,14 @@ class FeedbackService {
         topic: assessmentData.topic || 'General'
       };
 
-      // Generate feedback using OpenAI or fallback
+      // Generate feedback using Gemini or fallback
       let feedbackContent;
       try {
-        feedbackContent = await generateFeedback(feedbackData);
+        feedbackContent = await geminiService.generateFeedback(feedbackData);
       } catch (error) {
-        console.error('OpenAI feedback generation failed:', error.message);
-        feedbackContent = generateFallbackFeedback(feedbackData);
+        console.error('Gemini feedback generation failed:', error.message);
+        console.log('Using fallback feedback generation');
+        feedbackContent = geminiService.generateFallbackFeedback(feedbackData);
       }
 
       // Create feedback record
@@ -61,7 +62,7 @@ class FeedbackService {
           optimalLearningTime: this.suggestOptimalLearningTime(assessmentData.metrics)
         },
         metadata: {
-          generatedBy: process.env.OPENAI_API_KEY ? 'openai' : 'template',
+          generatedBy: process.env.GEMINI_API_KEY ? 'gemini' : 'template',
           confidence: 0.8,
           version: '1.0'
         }

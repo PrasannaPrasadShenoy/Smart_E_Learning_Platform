@@ -4,6 +4,7 @@ const {
   startAssessment,
   submitMetrics,
   completeAssessment,
+  getAssessmentData,
   getAssessmentResults,
   getUserAssessments,
   getAssessmentAnalytics
@@ -15,8 +16,8 @@ const router = express.Router();
 // Validation rules
 const startAssessmentValidation = [
   body('courseId')
-    .isMongoId()
-    .withMessage('Invalid course ID'),
+    .notEmpty()
+    .withMessage('Course ID is required'),
   body('videoId')
     .notEmpty()
     .withMessage('Video ID is required'),
@@ -26,8 +27,8 @@ const startAssessmentValidation = [
     .withMessage('Number of questions must be between 1 and 50'),
   body('difficulty')
     .optional()
-    .isIn(['easy', 'medium', 'hard'])
-    .withMessage('Difficulty must be easy, medium, or hard')
+    .isIn(['beginner', 'intermediate', 'advanced'])
+    .withMessage('Difficulty must be beginner, intermediate, or advanced')
 ];
 
 const metricsValidation = [
@@ -110,6 +111,7 @@ const paginationValidation = [
 
 // Routes
 router.post('/start', authenticateToken, startAssessmentValidation, startAssessment);
+router.get('/:assessmentId', authenticateToken, assessmentIdValidation, getAssessmentData);
 router.post('/:assessmentId/metrics', authenticateToken, assessmentIdValidation, metricsValidation, submitMetrics);
 router.post('/:assessmentId/complete', authenticateToken, assessmentIdValidation, completeAssessmentValidation, completeAssessment);
 router.get('/:assessmentId/results', authenticateToken, assessmentIdValidation, getAssessmentResults);

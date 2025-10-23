@@ -4,7 +4,16 @@ import toast from 'react-hot-toast'
 // Create axios instance
 export const api = axios.create({
   baseURL:  'http://localhost:4001/api',
-  timeout: 10000,
+  timeout: 10000, // Default 10 seconds for most requests
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+// Special API instance for assessment generation with longer timeout
+export const assessmentApi = axios.create({
+  baseURL: 'http://localhost:4001/api',
+  timeout: 600000, // 10 minutes timeout for assessment generation
   headers: {
     'Content-Type': 'application/json',
   },
@@ -12,6 +21,28 @@ export const api = axios.create({
 
 // Request interceptor
 api.interceptors.request.use(
+  (config) => {
+    // Add auth token if available
+    const token = localStorage.getItem('auth-storage')
+    if (token) {
+      try {
+        const authData = JSON.parse(token)
+        if (authData.state?.token) {
+          config.headers.Authorization = `Bearer ${authData.state.token}`
+        }
+      } catch (error) {
+        console.error('Error parsing auth token:', error)
+      }
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
+// Request interceptor for assessment API
+assessmentApi.interceptors.request.use(
   (config) => {
     // Add auth token if available
     const token = localStorage.getItem('auth-storage')

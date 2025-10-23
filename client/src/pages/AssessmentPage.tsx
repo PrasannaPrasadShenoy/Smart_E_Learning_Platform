@@ -74,8 +74,21 @@ const AssessmentPage: React.FC = () => {
 
     setIsLoading(true)
     try {
-      const response = await api.get(`/assessments/${assessmentId}/results`)
+      console.log('🔍 Fetching assessment:', assessmentId)
+      
+      // Get the assessment data (questions and basic info)
+      const response = await api.get(`/assessments/${assessmentId}`)
+      console.log('📊 Assessment response:', response.data)
+      
       const { questions, totalQuestions, timeLimit } = response.data.data
+      
+      console.log('❓ Questions received:', questions?.length || 0)
+      console.log('📝 Questions data:', questions)
+      
+      if (!questions || questions.length === 0) {
+        console.error('❌ No questions available for assessment')
+        throw new Error('No questions available for this assessment')
+      }
       
       setAssessment({
         assessmentId,
@@ -84,7 +97,10 @@ const AssessmentPage: React.FC = () => {
         timeLimit
       })
       setTimeLeft(timeLimit)
+      
+      console.log('✅ Assessment loaded successfully')
     } catch (error) {
+      console.error('❌ Error fetching assessment:', error)
       handleApiError(error)
       navigate('/search')
     } finally {
@@ -223,6 +239,29 @@ const AssessmentPage: React.FC = () => {
           </h3>
           <p className="text-gray-600 mb-4">
             The requested assessment could not be found.
+          </p>
+          <button
+            onClick={() => navigate('/search')}
+            className="btn btn-primary"
+          >
+            Back to Search
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Add safety checks for questions array
+  if (!assessment.questions || assessment.questions.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="text-center py-12">
+          <AlertTriangle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No Questions Available
+          </h3>
+          <p className="text-gray-600 mb-4">
+            This assessment doesn't have any questions yet.
           </p>
           <button
             onClick={() => navigate('/search')}

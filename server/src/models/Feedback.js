@@ -12,8 +12,7 @@ const feedbackSchema = new mongoose.Schema({
     required: true
   },
   courseId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Course',
+    type: String, // Changed to String to handle YouTube playlist IDs
     required: true
   },
   summary: {
@@ -85,7 +84,7 @@ const feedbackSchema = new mongoose.Schema({
   metadata: {
     generatedBy: {
       type: String,
-      enum: ['openai', 'template', 'manual'],
+      enum: ['gemini', 'template', 'manual'],
       required: true
     },
     confidence: {

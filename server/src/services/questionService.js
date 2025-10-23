@@ -2,11 +2,11 @@ const geminiService = require('./geminiService');
 const Question = require('../models/Question');
 
 // Generate questions for a specific video
-const generateVideoQuestions = async (transcript, videoId, courseId, difficulty = 'intermediate') => {
+const generateVideoQuestions = async (transcript, videoId, courseId, difficulty = 'intermediate', sourceLanguage = 'en') => {
   try {
-    console.log(`Generating ${difficulty} questions for video: ${videoId}`);
+    console.log(`Generating ${difficulty} questions for video: ${videoId} (language: ${sourceLanguage})`);
     
-    const questions = await geminiService.generateQuestions(transcript, difficulty, 5);
+    const questions = await geminiService.generateQuestions(transcript, difficulty, 5, sourceLanguage);
     
     // Save questions to database
     const savedQuestions = await Promise.all(
@@ -98,21 +98,60 @@ const extractTopic = (transcript) => {
 const generateFallbackVideoQuestions = async (transcript, videoId, courseId, difficulty) => {
   console.log('Using fallback for video questions');
   
-  const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 30);
-  const questions = sentences.slice(0, 5).map((sentence, index) => {
+  // Handle invalid courseId
+  const validCourseId = courseId && courseId !== 'temp' ? courseId : `playlist_${videoId}`;
+  
+  // Create diverse fallback questions instead of repetitive ones
+  const fallbackQuestions = [
+    {
+      question: 'What is the main topic covered in this video?',
+      options: ['Fundamental concepts', 'Advanced techniques', 'Practical applications', 'All of the above'],
+      correctAnswer: 'All of the above',
+      explanation: 'Educational videos typically cover multiple aspects of a topic.',
+      type: 'mcq'
+    },
+    {
+      question: 'Which learning approach would be most effective for this content?',
+      options: ['Passive listening', 'Active note-taking', 'Interactive practice', 'Combination of methods'],
+      correctAnswer: 'Combination of methods',
+      explanation: 'A combination of learning methods ensures better understanding.',
+      type: 'mcq'
+    },
+    {
+      question: 'What should you do after watching this video to reinforce learning?',
+      options: ['Move to next video', 'Take a break', 'Practice the concepts', 'Skip to assessment'],
+      correctAnswer: 'Practice the concepts',
+      explanation: 'Practice helps solidify understanding and retention.',
+      type: 'mcq'
+    },
+    {
+      question: 'Explain the key learning objectives of this video content.',
+      correctAnswer: 'The video aims to provide educational content that enhances understanding of the topic through clear explanations and practical examples.',
+      explanation: 'Learning objectives focus on knowledge acquisition and skill development.',
+      type: 'descriptive'
+    },
+    {
+      question: 'How would you apply the knowledge from this video in a real-world scenario?',
+      correctAnswer: 'Apply the knowledge by identifying relevant situations, practicing with examples, and gradually building confidence through hands-on experience.',
+      explanation: 'Real-world application involves recognizing opportunities and practicing in authentic contexts.',
+      type: 'descriptive'
+    }
+  ];
+  
+  const questions = fallbackQuestions.map((q, index) => {
     const question = new Question({
-      courseId,
+      courseId: validCourseId,
       videoId,
-      question: `What is the main concept discussed in this part of the video?`,
-      options: ['Option A', 'Option B', 'Option C', 'Option D'],
-      correctAnswer: 'The correct answer would be based on the video content.',
-      explanation: 'This question tests understanding of the video content.',
+      question: q.question,
+      options: q.options || [],
+      correctAnswer: q.correctAnswer,
+      explanation: q.explanation,
       difficulty,
       topic: extractTopic(transcript),
       metadata: {
         generatedBy: 'fallback',
         confidence: 0.5,
-        type: 'mcq'
+        type: q.type
       }
     });
     
@@ -137,7 +176,7 @@ const generateFallbackCourseTest = async (courseTranscripts, courseId, difficult
       explanation: 'This question tests overall course understanding.',
       difficulty,
       topic: 'General',
-      metadata: {
+          metadata: {
         generatedBy: 'fallback',
         confidence: 0.5,
         type: 'mcq',
@@ -174,7 +213,7 @@ const getCourseTestQuestions = async (courseId, difficulty = 'intermediate') => 
         courseId,
       'metadata.isCourseTest': true,
       difficulty,
-      isActive: true
+        isActive: true
     }).sort({ createdAt: -1 });
     
     return questions;
@@ -187,6 +226,13 @@ const getCourseTestQuestions = async (courseId, difficulty = 'intermediate') => 
 // Update question statistics
 const updateQuestionStats = async (questionId, isCorrect) => {
   try {
+    // Check if questionId is a valid MongoDB ObjectId
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(questionId)) {
+      console.log('Skipping stats update for fallback question:', questionId);
+      return;
+    }
+
     const question = await Question.findById(questionId);
     if (question) {
       question.metadata.attempts += 1;
@@ -195,7 +241,7 @@ const updateQuestionStats = async (questionId, isCorrect) => {
       }
       await question.save();
     }
-  } catch (error) {
+    } catch (error) {
     console.error('Error updating question stats:', error);
   }
 };
@@ -214,35 +260,131 @@ const getQuestionsForAssessment = async (courseId, videoId, numQuestions = 5, di
 
     // If not enough questions in database, generate new ones
     if (questions.length < numQuestions) {
-      console.log('Not enough questions in database, generating new ones...');
+      console.log(`Not enough questions in database (${questions.length}/${numQuestions}), generating new ones...`);
       
       // Get transcript to generate questions
       const transcriptService = require('./transcriptService');
-      const transcript = await transcriptService.getTranscript(videoId);
+      const transcriptData = await transcriptService.getTranscript(videoId);
       
-      if (transcript) {
-        const newQuestions = await generateVideoQuestions(transcript, videoId, courseId, difficulty);
-        questions = newQuestions.slice(0, numQuestions);
+      console.log('Transcript data for question generation:', {
+        hasTranscript: transcriptData?.hasTranscript,
+        wordCount: transcriptData?.wordCount,
+        language: transcriptData?.language,
+        transcriptLength: transcriptData?.transcript?.length
+      });
+      
+      if (transcriptData && transcriptData.hasTranscript && transcriptData.transcript && transcriptData.transcript.length > 100) {
+        console.log('Generating questions from transcript...');
+        try {
+          const newQuestions = await generateVideoQuestions(transcriptData.transcript, videoId, courseId, difficulty, transcriptData.language);
+          console.log(`Generated ${newQuestions.length} new questions from transcript`);
+          questions = newQuestions.slice(0, numQuestions);
+    } catch (error) {
+          console.error('Error generating questions from transcript:', error);
+          console.log('Falling back to fallback questions due to generation error');
+          const fallbackQuestions = generateFallbackQuestions('General educational content', difficulty);
+          questions = fallbackQuestions.slice(0, numQuestions);
+        }
+      } else {
+        console.log('No valid transcript available, using fallback questions');
+        console.log('Transcript status:', {
+          hasTranscript: transcriptData?.hasTranscript,
+          transcriptLength: transcriptData?.transcript?.length,
+          isLongEnough: transcriptData?.transcript?.length > 100
+        });
+        // Generate fallback questions if no transcript
+        const fallbackQuestions = generateFallbackQuestions('General educational content', difficulty);
+        questions = fallbackQuestions.slice(0, numQuestions);
       }
     }
 
     return questions;
-  } catch (error) {
+    } catch (error) {
     console.error('Error getting questions for assessment:', error);
-    return [];
-  }
+      return [];
+    }
+};
+
+// Generate fallback questions when no transcript is available
+const generateFallbackQuestions = (transcript, difficulty = 'intermediate') => {
+  const mongoose = require('mongoose');
+  
+  // Generate unique ObjectIds for each question
+  const generateUniqueId = (index) => {
+    const baseId = '507f1f77bcf86cd7994390';
+    return new mongoose.Types.ObjectId(baseId + (10 + index).toString());
+  };
+  
+  // Create diverse fallback questions
+  const fallbackQuestions = [
+    {
+      _id: generateUniqueId(1),
+      question: 'What is the primary focus of this educational video?',
+      type: 'mcq',
+      options: ['Conceptual understanding', 'Practical implementation', 'Problem-solving techniques', 'All of the above'],
+      correctAnswer: 'All of the above',
+      explanation: 'Educational videos typically cover multiple learning aspects to provide comprehensive understanding.',
+      difficulty: difficulty,
+      topic: 'Learning Objectives',
+      metadata: { type: 'mcq', generatedBy: 'fallback' }
+    },
+    {
+      _id: generateUniqueId(2),
+      question: 'Which learning approach would be most effective for this content?',
+      type: 'mcq',
+      options: ['Passive listening', 'Active note-taking', 'Interactive practice', 'Combination of methods'],
+      correctAnswer: 'Combination of methods',
+      explanation: 'A combination of learning methods ensures better retention and understanding of complex topics.',
+      difficulty: difficulty,
+      topic: 'Learning Methods',
+      metadata: { type: 'mcq', generatedBy: 'fallback' }
+    },
+    {
+      _id: generateUniqueId(3),
+      question: 'What should be your next step after completing this video?',
+      type: 'mcq',
+      options: ['Move to the next topic', 'Practice with exercises', 'Review key concepts', 'Apply knowledge practically'],
+      correctAnswer: 'Apply knowledge practically',
+      explanation: 'Practical application helps solidify understanding and builds real-world skills.',
+      difficulty: difficulty,
+      topic: 'Learning Progression',
+      metadata: { type: 'mcq', generatedBy: 'fallback' }
+    },
+    {
+      _id: generateUniqueId(4),
+      question: 'Explain the importance of understanding the fundamental concepts presented in this video.',
+      type: 'descriptive',
+      correctAnswer: 'Understanding fundamental concepts is crucial as they form the foundation for advanced learning, enable problem-solving in various contexts, and help in building expertise in the subject area.',
+      explanation: 'Fundamental concepts provide the building blocks for more complex knowledge and practical applications.',
+      difficulty: difficulty,
+      topic: 'Conceptual Understanding',
+      metadata: { type: 'descriptive', generatedBy: 'fallback' }
+    },
+    {
+      _id: generateUniqueId(5),
+      question: 'How would you apply the knowledge gained from this video in a real-world scenario?',
+      type: 'descriptive',
+      correctAnswer: 'The knowledge can be applied by identifying relevant situations where these concepts are useful, practicing with real examples, and gradually building confidence through hands-on experience.',
+      explanation: 'Real-world application involves recognizing opportunities to use the knowledge and practicing in authentic contexts.',
+      difficulty: difficulty,
+      topic: 'Practical Application',
+      metadata: { type: 'descriptive', generatedBy: 'fallback' }
+    }
+  ];
+
+  return fallbackQuestions;
 };
 
 // Generate question preview (compatibility method)
 const generateQuestionPreview = (question) => {
     return {
-      id: question._id,
+      id: question._id || question.id || 'fallback',
       question: question.question,
-    type: question.metadata.type,
-      options: question.options,
-      difficulty: question.difficulty,
-    topic: question.topic
-  };
+      type: question.metadata?.type || question.type || 'mcq',
+      options: question.options || [],
+      difficulty: question.difficulty || 'intermediate',
+      topic: question.topic || 'General'
+    };
 };
 
 module.exports = {
@@ -252,5 +394,6 @@ module.exports = {
   getCourseTestQuestions,
   updateQuestionStats,
   getQuestionsForAssessment,
-  generateQuestionPreview
+  generateQuestionPreview,
+  generateFallbackQuestions
 };

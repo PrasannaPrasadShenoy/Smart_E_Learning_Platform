@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { api, handleApiError } from '../services/api'
+import { api, assessmentApi, handleApiError } from '../services/api'
 import { progressService } from '../services/progressService'
 import { 
   ArrowLeft, 
@@ -64,7 +64,18 @@ const VideoPlayerPage: React.FC = () => {
   const [autoPlayNext, setAutoPlayNext] = useState(true)
   const [showPlaylist, setShowPlaylist] = useState(false)
   
-  const iframeRef = useRef<HTMLIFrameElement>(null)
+  // Video progress tracking
+  const [videoProgress, setVideoProgress] = useState(0)
+  const [watchTime, setWatchTime] = useState(0)
+  const [isAssessmentReady, setIsAssessmentReady] = useState(false)
+  const [isGeneratingTest, setIsGeneratingTest] = useState(false)
+  const [testGenerationProgress, setTestGenerationProgress] = useState('')
+  const [questionsReady, setQuestionsReady] = useState(false)
+  const [generatedAssessmentId, setGeneratedAssessmentId] = useState<string | null>(null)
+  const [minWatchTime] = useState(0) // No minimum time required
+  const [optimalWatchTime] = useState(60) // 1 minute for better questions
+  
+  // Removed iframeRef - using direct iframe approach
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -138,7 +149,14 @@ const VideoPlayerPage: React.FC = () => {
       console.log('Fetching video details for:', videoId)
       const response = await api.get(`/youtube/video/${videoId}`)
       console.log('Video details response:', response.data)
-      setVideo(response.data.data.video)
+      
+      if (response.data.data && response.data.data.video) {
+        setVideo(response.data.data.video)
+        console.log('Video set:', response.data.data.video)
+      } else {
+        console.error('No video data in response:', response.data)
+        toast.error('No video data received')
+      }
     } catch (error) {
       console.error('Error fetching video details:', error)
       handleApiError(error)
@@ -149,20 +167,87 @@ const VideoPlayerPage: React.FC = () => {
     }
   }
 
-  const startAssessment = async () => {
+  const generateAssessment = async () => {
     if (!videoId) return
 
     try {
-      const response = await api.post('/assessments/start', {
+      setIsGeneratingTest(true)
+      setQuestionsReady(false)
+      setGeneratedAssessmentId(null)
+      
+      // Show progress steps
+      setTestGenerationProgress('🎬 Extracting video audio...')
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      setTestGenerationProgress('🧠 Transcribing video content...')
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      
+      setTestGenerationProgress('🤖 Generating questions with AI...')
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      const response = await assessmentApi.post('/assessments/start', {
         courseId: 'temp', // This would be passed from the playlist
         videoId: videoId,
         numQuestions: 10
       })
       
       const { assessmentId } = response.data.data
-      navigate(`/assessment/${assessmentId}`)
+      
+      setTestGenerationProgress('✅ Questions generated successfully!')
+      setQuestionsReady(true)
+      setGeneratedAssessmentId(assessmentId)
+      
+      // Show test ready popup with enhanced styling
+      toast.success('🎉 Assessment questions are ready! Click "Start Assessment" to begin.', {
+        duration: 8000,
+        position: 'top-center',
+        style: {
+          background: 'linear-gradient(135deg, #10B981, #059669)',
+          color: 'white',
+          fontSize: '18px',
+          fontWeight: 'bold',
+          padding: '20px 32px',
+          borderRadius: '12px',
+          boxShadow: '0 8px 25px rgba(16, 185, 129, 0.3)',
+          border: '2px solid #10B981',
+          maxWidth: '400px',
+          textAlign: 'center'
+        },
+        icon: '🎉',
+        iconTheme: {
+          primary: '#fff',
+          secondary: '#10B981',
+        }
+      })
+      
     } catch (error) {
-      handleApiError(error)
+      console.error('Assessment generation error:', error)
+      
+      if (error.code === 'ECONNABORTED') {
+        toast.error('Assessment generation timed out. This usually takes 5-7 minutes. Please try again.', {
+          duration: 8000,
+          style: {
+            background: '#EF4444',
+            color: 'white',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            padding: '16px 24px',
+            borderRadius: '8px',
+            maxWidth: '500px'
+          }
+        })
+      } else {
+        handleApiError(error)
+      }
+    } finally {
+      setIsGeneratingTest(false)
+      setTestGenerationProgress('')
+    }
+  }
+
+  const startAssessment = () => {
+    if (generatedAssessmentId) {
+      navigate(`/assessment/${generatedAssessmentId}`)
     }
   }
 
@@ -200,89 +285,49 @@ const VideoPlayerPage: React.FC = () => {
     toast.success('Opening in YouTube for full controls')
   }
 
-  // YouTube Player API and event handlers
+  // Instant assessment readiness - no timer needed
   useEffect(() => {
-    let player: any = null
-    let checkInterval: NodeJS.Timeout | null = null
-
-    const initializeYouTubePlayer = () => {
-      // Clean up existing player
-      if (player) {
-        player.destroy()
-        player = null
-      }
-
-      if (window.YT && window.YT.Player) {
-        const playerElement = document.getElementById(`youtube-player-${videoId}`)
-        if (playerElement) {
-          console.log('Initializing YouTube player for video:', videoId)
-          player = new window.YT.Player(playerElement, {
-            videoId: videoId,
-            playerVars: {
-              autoplay: 0,
-              controls: 1,
-              modestbranding: 1,
-              rel: 0,
-              enablejsapi: 1
-            },
-            events: {
-              onReady: (event: any) => {
-                console.log('YouTube player ready for video:', videoId)
-              },
-              onStateChange: (event: any) => {
-                console.log('YouTube player state changed:', event.data, 'for video:', videoId)
-                switch (event.data) {
-                  case window.YT.PlayerState.ENDED:
-                    console.log('Video ended, checking for next video')
-                    handleVideoEnded()
-                    break
-                  case window.YT.PlayerState.PAUSED:
-                    setIsPlaying(false)
-                    break
-                  case window.YT.PlayerState.PLAYING:
-                    setIsPlaying(true)
-                    break
-                }
-              }
-            }
-          })
-        }
-      } else {
-        // Fallback: Check for video end using timer
-        console.log('YouTube API not available, using fallback timer')
-        checkInterval = setInterval(() => {
-          if (iframeRef.current) {
-            // This is a simple fallback - in a real implementation,
-            // you'd need to track video progress more accurately
-            console.log('Checking video status...')
-          }
-        }, 5000) // Check every 5 seconds
-      }
+    // Set assessment ready immediately when video loads
+    if (video && !isAssessmentReady) {
+      setIsAssessmentReady(true)
+      console.log('Assessment ready immediately - transcript will be generated on demand')
     }
+  }, [video, isAssessmentReady])
 
-    // Load YouTube API if not already loaded
-    if (!window.YT) {
-      const tag = document.createElement('script')
-      tag.src = 'https://www.youtube.com/iframe_api'
-      const firstScriptTag = document.getElementsByTagName('script')[0]
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag)
+  // Track video interaction (simulated)
+  const handleVideoInteraction = () => {
+    setWatchTime(prev => prev + 30) // Add 30 seconds for any interaction
+  }
+
+  // Manual progress tracking buttons (for testing/fallback)
+  const addWatchTime = (seconds: number) => {
+    setWatchTime(prev => {
+      const newTime = prev + seconds
+      if (newTime >= minWatchTime && !isAssessmentReady) {
+        setIsAssessmentReady(true)
+        toast.success('Assessment is now ready! You can take the test.')
+      }
+      return newTime
+    })
+  }
+
+  // Simulate video progress (for testing when YouTube API fails)
+  const simulateVideoProgress = () => {
+    let simulatedTime = 0
+    const interval = setInterval(() => {
+      simulatedTime += 10
+      setWatchTime(simulatedTime)
       
-      window.onYouTubeIframeAPIReady = initializeYouTubePlayer
-    } else {
-      // Small delay to ensure DOM is ready
-      setTimeout(initializeYouTubePlayer, 100)
-    }
-
-    return () => {
-      if (checkInterval) {
-        clearInterval(checkInterval)
+      if (simulatedTime >= minWatchTime && !isAssessmentReady) {
+        setIsAssessmentReady(true)
+        toast.success('Assessment is now ready! You can take the test.')
       }
-      if (player) {
-        console.log('Destroying YouTube player for video:', videoId)
-        player.destroy()
+      
+      if (simulatedTime >= 300) { // Stop after 5 minutes
+        clearInterval(interval)
       }
-    }
-  }, [videoId])
+    }, 1000)
+  }
 
   const markVideoCompleted = async () => {
     if (!video || !playlistId) return
@@ -392,26 +437,45 @@ const VideoPlayerPage: React.FC = () => {
         {/* Video Player */}
         <div className="lg:col-span-2">
           <div className="aspect-video bg-black rounded-lg overflow-hidden mb-6 relative video-container">
-            <div
-              ref={iframeRef}
-              id={`youtube-player-${videoId}`}
-              className="w-full h-full"
-            />
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full text-white">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                  <div className="text-lg">Loading video...</div>
+                </div>
+              </div>
+            ) : videoId ? (
+              <iframe
+                src={`https://www.youtube.com/embed/${videoId}?autoplay=0&controls=1&modestbranding=1&rel=0&showinfo=0&enablejsapi=1`}
+                title={video?.title || 'Video Player'}
+                className="w-full h-full border-0"
+                allowFullScreen
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                style={{ pointerEvents: 'auto' }}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-white">
+                <div className="text-center">
+                  <div className="text-lg mb-2">No Video ID</div>
+                  <div className="text-sm">Please check the URL</div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Video Info */}
           <div className="space-y-4">
             <h1 className="text-2xl font-bold text-gray-900">
-              {video.title}
+              {video?.title || 'Loading video...'}
             </h1>
             
             {/* Video Metadata */}
             <div className="flex items-center space-x-4 text-sm text-gray-600">
               <div className="flex items-center">
                 <Clock className="h-4 w-4 mr-1" />
-                <span>{video.duration}</span>
+                <span>{video?.duration || 'Loading...'}</span>
               </div>
-              {video.channelTitle && (
+              {video?.channelTitle && (
                 <div className="flex items-center">
                   <User className="h-4 w-4 mr-1" />
                   <span>{video.channelTitle}</span>
@@ -682,13 +746,55 @@ const VideoPlayerPage: React.FC = () => {
                 <p className="text-sm text-gray-600 mb-4">
                   Take an AI-generated assessment based on this video's content.
                 </p>
+              {!questionsReady ? (
+                <button
+                  onClick={generateAssessment}
+                  disabled={isGeneratingTest}
+                  className={`btn w-full ${isGeneratingTest ? 'btn-disabled' : 'btn-primary'}`}
+                >
+                  <Brain className="h-5 w-5 mr-2" />
+                  {isGeneratingTest ? 'Generating Assessment...' : 'Generate Assessment'}
+                </button>
+              ) : (
                 <button
                   onClick={startAssessment}
-                  className="btn btn-primary w-full"
+                  className="btn w-full btn-success"
                 >
                   <Brain className="h-5 w-5 mr-2" />
                   Start Assessment
                 </button>
+              )}
+        
+        {isGeneratingTest && (
+          <div className="mt-4 space-y-3">
+            <div className="text-sm text-blue-600 text-center">
+              {testGenerationProgress}
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{ width: '100%' }}></div>
+            </div>
+            <div className="text-xs text-gray-500 text-center">
+              This may take 5-7 minutes for high-quality questions. Please be patient.
+            </div>
+          </div>
+        )}
+        
+        {questionsReady && (
+          <div className="mt-4 space-y-3">
+            <div className="text-sm text-green-600 text-center font-semibold">
+              ✅ Assessment questions are ready!
+            </div>
+            <div className="text-xs text-gray-600 text-center">
+              Click "Start Assessment" to begin your test
+            </div>
+          </div>
+        )}
+        
+        {!isGeneratingTest && !questionsReady && (
+          <div className="text-sm text-gray-600 mt-2 text-center">
+            Click "Generate Assessment" to create questions from video transcript
+          </div>
+        )}
               </div>
             </div>
 
@@ -735,6 +841,54 @@ const VideoPlayerPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+          {/* Assessment Info */}
+          <div className="card">
+            <div className="card-header">
+              <h3 className="card-title text-lg">Assessment Info</h3>
+            </div>
+            <div className="card-content">
+              <div className="space-y-3">
+                {questionsReady ? (
+                  <>
+                    <div className="text-sm text-green-600 font-semibold">
+                      ✅ Questions generated successfully
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      🎯 Ready to start your assessment
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      📝 Questions are based on video content
+                    </div>
+                  </>
+                ) : isGeneratingTest ? (
+                  <>
+                    <div className="text-sm text-blue-600 font-semibold">
+                      🔄 Generating questions...
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      🧠 AI is analyzing video transcript
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      ⏱️ This may take 5-7 minutes
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm text-gray-600">
+                      🎬 Click "Generate Assessment" to begin
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      🧠 AI will generate questions from video transcript
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      📝 Questions will be video-specific and relevant
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
 
             {/* Learning Tips */}
             <div className="card">
