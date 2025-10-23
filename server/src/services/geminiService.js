@@ -76,8 +76,8 @@ Format as structured notes with clear sections. Make it comprehensive and educat
       throw new Error('Gemini API key not configured');
     }
     
-    const maxRetries = 3;
-    const retryDelay = 2000; // 2 seconds
+      const maxRetries = 5;
+      const retryDelay = 5000; // 5 seconds
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -137,16 +137,18 @@ Format as JSON array with this structure:
         
         // Check if it's a retryable error
         if (error.status === 503 || error.status === 429 || error.message.includes('overloaded') || error.message.includes('Service Unavailable')) {
-          if (attempt < maxRetries) {
-            console.log(`⏳ Retrying in ${retryDelay * attempt}ms... (attempt ${attempt + 1}/${maxRetries})`);
-            await new Promise(resolve => setTimeout(resolve, retryDelay * attempt)); // Exponential backoff
-            continue;
-          }
+            if (attempt < maxRetries) {
+              const delay = retryDelay * Math.pow(2, attempt - 1); // Exponential backoff: 5s, 10s, 20s, 40s
+              console.log(`⏳ Retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
         }
         
         // If it's the last attempt or non-retryable error, throw
         if (attempt === maxRetries) {
           console.error('🚫 All Gemini retry attempts failed');
+          console.log('💡 Consider trying again later when Gemini API is less overloaded');
           throw new Error('Failed to generate questions after multiple attempts');
         }
       }

@@ -101,38 +101,42 @@ const generateFallbackVideoQuestions = async (transcript, videoId, courseId, dif
   // Handle invalid courseId
   const validCourseId = courseId && courseId !== 'temp' ? courseId : `playlist_${videoId}`;
   
-  // Create diverse fallback questions instead of repetitive ones
+  // Extract some context from transcript if available
+  const transcriptWords = transcript ? transcript.split(' ').slice(0, 20).join(' ') : '';
+  const hasContent = transcriptWords.length > 10;
+  
+  // Create more video-specific fallback questions
   const fallbackQuestions = [
     {
-      question: 'What is the main topic covered in this video?',
+      question: hasContent ? `Based on the video content about "${transcriptWords}", what is the main topic being discussed?` : 'What is the main topic covered in this video?',
       options: ['Fundamental concepts', 'Advanced techniques', 'Practical applications', 'All of the above'],
       correctAnswer: 'All of the above',
       explanation: 'Educational videos typically cover multiple aspects of a topic.',
       type: 'mcq'
     },
     {
-      question: 'Which learning approach would be most effective for this content?',
+      question: hasContent ? `What key concepts from "${transcriptWords}" should you focus on?` : 'Which learning approach would be most effective for this content?',
       options: ['Passive listening', 'Active note-taking', 'Interactive practice', 'Combination of methods'],
       correctAnswer: 'Combination of methods',
       explanation: 'A combination of learning methods ensures better understanding.',
       type: 'mcq'
     },
     {
-      question: 'What should you do after watching this video to reinforce learning?',
+      question: hasContent ? `How would you apply the concepts from "${transcriptWords}" in practice?` : 'What should you do after watching this video to reinforce learning?',
       options: ['Move to next video', 'Take a break', 'Practice the concepts', 'Skip to assessment'],
       correctAnswer: 'Practice the concepts',
       explanation: 'Practice helps solidify understanding and retention.',
       type: 'mcq'
     },
     {
-      question: 'Explain the key learning objectives of this video content.',
-      correctAnswer: 'The video aims to provide educational content that enhances understanding of the topic through clear explanations and practical examples.',
+      question: hasContent ? `Explain the key learning objectives of this video about "${transcriptWords}".` : 'Explain the key learning objectives of this video content.',
+      correctAnswer: hasContent ? `The video about "${transcriptWords}" aims to provide educational content that enhances understanding of the topic through clear explanations and practical examples.` : 'The video aims to provide educational content that enhances understanding of the topic through clear explanations and practical examples.',
       explanation: 'Learning objectives focus on knowledge acquisition and skill development.',
       type: 'descriptive'
     },
     {
-      question: 'How would you apply the knowledge from this video in a real-world scenario?',
-      correctAnswer: 'Apply the knowledge by identifying relevant situations, practicing with examples, and gradually building confidence through hands-on experience.',
+      question: hasContent ? `How would you apply the knowledge from this video about "${transcriptWords}" in a real-world scenario?` : 'How would you apply the knowledge from this video in a real-world scenario?',
+      correctAnswer: hasContent ? `Apply the knowledge from "${transcriptWords}" by identifying relevant situations, practicing with examples, and gradually building confidence through hands-on experience.` : 'Apply the knowledge by identifying relevant situations, practicing with examples, and gradually building confidence through hands-on experience.',
       explanation: 'Real-world application involves recognizing opportunities and practicing in authentic contexts.',
       type: 'descriptive'
     }
