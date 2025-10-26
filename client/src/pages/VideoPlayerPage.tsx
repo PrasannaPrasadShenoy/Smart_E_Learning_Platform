@@ -175,57 +175,103 @@ const VideoPlayerPage: React.FC = () => {
       setQuestionsReady(false)
       setGeneratedAssessmentId(null)
       
-      // Show progress steps
-      setTestGenerationProgress('🎬 Extracting video audio...')
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      setTestGenerationProgress('🧠 Transcribing video content...')
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      
-      setTestGenerationProgress('🤖 Generating questions with AI...')
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Step 1: Start the generation process
+      setTestGenerationProgress('🎬 Starting video processing...')
       
       const response = await assessmentApi.post('/assessments/start', {
-        courseId: 'temp', // This would be passed from the playlist
+        courseId: 'temp',
         videoId: videoId,
         numQuestions: 10
       })
       
       const { assessmentId } = response.data.data
-      
-      setTestGenerationProgress('✅ Questions generated successfully!')
-      setQuestionsReady(true)
       setGeneratedAssessmentId(assessmentId)
       
-      // Show test ready popup with enhanced styling
-      toast.success('🎉 Assessment questions are ready! Click "Start Assessment" to begin.', {
-        duration: 8000,
-        position: 'top-center',
-        style: {
-          background: 'linear-gradient(135deg, #10B981, #059669)',
-          color: 'white',
-          fontSize: '18px',
-          fontWeight: 'bold',
-          padding: '20px 32px',
-          borderRadius: '12px',
-          boxShadow: '0 8px 25px rgba(16, 185, 129, 0.3)',
-          border: '2px solid #10B981',
-          maxWidth: '400px',
-          textAlign: 'center'
-        },
-        icon: '🎉',
-        iconTheme: {
-          primary: '#fff',
-          secondary: '#10B981',
+      // Step 2: Poll for completion
+      setTestGenerationProgress('⏳ Processing video content (this may take 2-5 minutes)...')
+      
+      let attempts = 0
+      const maxAttempts = 60 // 5 minutes with 5-second intervals
+      
+      while (attempts < maxAttempts) {
+        try {
+          // Check if assessment is ready
+          const checkResponse = await api.get(`/assessments/${assessmentId}`)
+          
+          if (checkResponse.data.success && checkResponse.data.data.questions?.length > 0) {
+            setTestGenerationProgress('✅ Questions generated successfully!')
+            setQuestionsReady(true)
+            
+            // Show success notification
+            toast.success('🎉 Assessment questions are ready! Click "Start Assessment" to begin.', {
+              duration: 8000,
+              position: 'top-center',
+              style: {
+                background: 'linear-gradient(135deg, #10B981, #059669)',
+                color: 'white',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                padding: '20px 32px',
+                borderRadius: '12px',
+                boxShadow: '0 8px 25px rgba(16, 185, 129, 0.3)',
+                border: '2px solid #10B981',
+                maxWidth: '400px',
+                textAlign: 'center'
+              },
+              icon: '🎉',
+              iconTheme: {
+                primary: '#fff',
+                secondary: '#10B981',
+              }
+            })
+            break
+          }
+          
+          // Update progress message
+          const progressMessages = [
+            '🎬 Extracting video audio...',
+            '🧠 Transcribing video content...',
+            '🤖 Generating questions with AI...',
+            '💾 Storing questions in database...',
+            '⏳ Almost ready...'
+          ]
+          const messageIndex = Math.floor(attempts / 12) % progressMessages.length
+          setTestGenerationProgress(progressMessages[messageIndex])
+          
+          // Wait 5 seconds before next check
+          await new Promise(resolve => setTimeout(resolve, 5000))
+          attempts++
+          
+        } catch (checkError) {
+          console.log('Checking assessment status...', checkError.message)
+          await new Promise(resolve => setTimeout(resolve, 5000))
+          attempts++
         }
-      })
+      }
+      
+      if (attempts >= maxAttempts) {
+        throw new Error('Assessment generation timed out. Please try again.')
+      }
       
     } catch (error) {
       console.error('Assessment generation error:', error)
       
-      if (error.code === 'ECONNABORTED') {
-        toast.error('Assessment generation timed out. This usually takes 5-7 minutes. Please try again.', {
+      if (error.message.includes('timed out')) {
+        toast.error('Assessment generation timed out. This usually takes 2-5 minutes. Please try again.', {
           duration: 8000,
+          style: {
+            background: '#EF4444',
+            color: 'white',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            padding: '16px 24px',
+            borderRadius: '8px',
+            maxWidth: '500px'
+          }
+        })
+      } else if (error.code === 'ECONNABORTED') {
+        toast.error('Request timed out. Please try again.', {
+          duration: 5000,
           style: {
             background: '#EF4444',
             color: 'white',
