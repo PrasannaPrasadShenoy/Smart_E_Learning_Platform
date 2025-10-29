@@ -373,6 +373,22 @@ Keep it under 200 words.`;
       throw new Error('Failed to summarize transcript with Gemini');
     }
   }
+
+  // Generic content generation method
+  async generateContent(prompt) {
+    if (!this.model) {
+      throw new Error('Gemini API key not configured');
+    }
+    
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
+    } catch (error) {
+      console.error('Gemini API error for content generation:', error);
+      throw new Error('Failed to generate content');
+    }
+  }
 }
 
 module.exports = new GeminiService();

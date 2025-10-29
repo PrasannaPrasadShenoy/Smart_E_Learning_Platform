@@ -19,6 +19,24 @@ export const assessmentApi = axios.create({
   },
 })
 
+// Special API instance for notes generation with longer timeout
+export const notesApi = axios.create({
+  baseURL: 'http://localhost:4001/api',
+  timeout: 300000, // 5 minutes timeout for notes generation
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+// Special API instance for PDF download with longer timeout
+export const pdfApi = axios.create({
+  baseURL: 'http://localhost:4001/api',
+  timeout: 120000, // 2 minutes timeout for PDF download
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
@@ -43,6 +61,28 @@ api.interceptors.request.use(
 
 // Request interceptor for assessment API
 assessmentApi.interceptors.request.use(
+  (config) => {
+    // Add auth token if available
+    const token = localStorage.getItem('auth-storage')
+    if (token) {
+      try {
+        const authData = JSON.parse(token)
+        if (authData.state?.token) {
+          config.headers.Authorization = `Bearer ${authData.state.token}`
+        }
+      } catch (error) {
+        console.error('Error parsing auth token:', error)
+      }
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
+// Request interceptor for notes API
+notesApi.interceptors.request.use(
   (config) => {
     // Add auth token if available
     const token = localStorage.getItem('auth-storage')
@@ -88,6 +128,120 @@ api.interceptors.response.use(
       toast.error('Server error. Please try again later.')
     } else if (error.code === 'ECONNABORTED') {
       toast.error('Request timeout. Please check your connection.')
+    } else if (!error.response) {
+      toast.error('Network error. Please check your connection.')
+    }
+
+    return Promise.reject(error)
+  }
+)
+
+// Response interceptor for assessment API
+assessmentApi.interceptors.response.use(
+  (response) => {
+    return response
+  },
+  (error) => {
+    // Handle common errors
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth-storage')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    } else if (error.response?.status === 403) {
+      if (!error.config?.url?.includes('/auth/login')) {
+        toast.error('Access denied')
+      }
+    } else if (error.response?.status === 429) {
+      toast.error('Too many requests. Please try again later.')
+    } else if (error.response?.status >= 500) {
+      toast.error('Server error. Please try again later.')
+    } else if (error.code === 'ECONNABORTED') {
+      toast.error('Assessment generation timed out. This usually takes 2-5 minutes. Please try again.')
+    } else if (!error.response) {
+      toast.error('Network error. Please check your connection.')
+    }
+
+    return Promise.reject(error)
+  }
+)
+
+// Response interceptor for notes API
+notesApi.interceptors.response.use(
+  (response) => {
+    return response
+  },
+  (error) => {
+    // Handle common errors
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth-storage')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    } else if (error.response?.status === 403) {
+      if (!error.config?.url?.includes('/auth/login')) {
+        toast.error('Access denied')
+      }
+    } else if (error.response?.status === 429) {
+      toast.error('Too many requests. Please try again later.')
+    } else if (error.response?.status >= 500) {
+      toast.error('Server error. Please try again later.')
+    } else if (error.code === 'ECONNABORTED') {
+      toast.error('Notes generation timed out. This usually takes 3-5 minutes. Please try again.')
+    } else if (!error.response) {
+      toast.error('Network error. Please check your connection.')
+    }
+
+    return Promise.reject(error)
+  }
+)
+
+// Request interceptor for PDF API
+pdfApi.interceptors.request.use(
+  (config) => {
+    // Add auth token if available
+    const token = localStorage.getItem('auth-storage')
+    if (token) {
+      try {
+        const authData = JSON.parse(token)
+        if (authData.state?.token) {
+          config.headers.Authorization = `Bearer ${authData.state.token}`
+        }
+      } catch (error) {
+        console.error('Error parsing auth token:', error)
+      }
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
+// Response interceptor for PDF API
+pdfApi.interceptors.response.use(
+  (response) => {
+    return response
+  },
+  (error) => {
+    // Handle common errors
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth-storage')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    } else if (error.response?.status === 403) {
+      if (!error.config?.url?.includes('/auth/login')) {
+        toast.error('Access denied')
+      }
+    } else if (error.response?.status === 408) {
+      toast.error('PDF generation timed out. Please try again.')
+    } else if (error.response?.status === 429) {
+      toast.error('Too many requests. Please try again later.')
+    } else if (error.response?.status >= 500) {
+      toast.error('Server error. Please try again later.')
+    } else if (error.code === 'ECONNABORTED') {
+      toast.error('PDF download timed out. Please try again.')
     } else if (!error.response) {
       toast.error('Network error. Please check your connection.')
     }

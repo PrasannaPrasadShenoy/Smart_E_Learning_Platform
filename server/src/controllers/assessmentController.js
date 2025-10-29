@@ -3,6 +3,7 @@ const Assessment = require('../models/Assessment');
 const questionService = require('../services/questionService');
 const cliService = require('../services/cliService');
 const feedbackService = require('../services/feedbackService');
+const playlistProgressService = require('../services/playlistProgressService');
 const { asyncHandler } = require('../middlewares/errorHandler');
 
 /**
@@ -268,6 +269,28 @@ const completeAssessment = asyncHandler(async (req, res) => {
     console.error('Feedback generation failed:', error.message);
     console.log('Assessment completed without feedback');
     feedback = null;
+  }
+
+  // Update playlist progress
+  try {
+    console.log('📊 Updating playlist progress...');
+    await playlistProgressService.addAssessmentAttempt(
+      assessment.userId,
+      assessment.courseId,
+      assessment.videoId,
+      {
+        testScore,
+        cli: cliResult.cli,
+        cliClassification: cliResult.cliClassification,
+        confidence,
+        timeSpent: assessment.timeSpent,
+        assessmentId: assessment._id
+      }
+    );
+    console.log('✅ Playlist progress updated successfully');
+  } catch (progressError) {
+    console.error('Progress tracking error:', progressError.message);
+    // Continue without progress tracking if it fails
   }
 
   res.json({

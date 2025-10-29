@@ -22,6 +22,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
+    "puppeteer": "^24.26.1",
     "youtube-transcript": "^1.0.6",
     "yt-dlp-wrap": "^2.3.12"
   },

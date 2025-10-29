@@ -14,6 +14,8 @@ const youtubeRoutes = require('./routes/youtubeRoutes');
 const assessmentRoutes = require('./routes/assessmentRoutes');
 const feedbackRoutes = require('./routes/feedbackRoutes');
 const progressRoutes = require('./routes/progressRoutes');
+const playlistProgressRoutes = require('./routes/playlistProgressRoutes');
+const notesRoutes = require('./routes/notesRoutes');
 
 // Initialize Express app
 const app = express();
@@ -81,6 +83,8 @@ app.use('/api/youtube', youtubeRoutes);
 app.use('/api/assessments', assessmentRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/progress', progressRoutes);
+app.use('/api/playlist-progress', playlistProgressRoutes);
+app.use('/api/notes', notesRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api, handleApiError } from '../services/api'
+import { api, assessmentApi, handleApiError } from '../services/api'
 import { 
   ArrowLeft, 
   CheckCircle, 
-  XCircle, 
   Clock, 
   Brain,
   Eye,
@@ -27,6 +26,7 @@ interface AssessmentData {
   questions: Question[]
   totalQuestions: number
   timeLimit: number
+  videoId?: string
 }
 
 interface Metrics {
@@ -51,7 +51,7 @@ const AssessmentPage: React.FC = () => {
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const metricsIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const metricsIntervalRef = useRef<number | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -155,7 +155,7 @@ const AssessmentPage: React.FC = () => {
 
   const sendMetricsToServer = useCallback(async (metric: Metrics) => {
     try {
-      await api.post(`/assessments/${assessmentId}/metrics`, {
+      await assessmentApi.post(`/assessments/${assessmentId}/metrics`, {
         metrics: [metric]
       })
     } catch (error) {
@@ -187,13 +187,19 @@ const AssessmentPage: React.FC = () => {
 
     setIsSubmitting(true)
     
+    // Show submission progress
+    toast.loading('Submitting assessment...', {
+      id: 'submission-progress',
+      duration: 0
+    })
+    
     // Stop metrics collection
     if (metricsIntervalRef.current) {
       clearInterval(metricsIntervalRef.current)
     }
 
     try {
-      const response = await api.post(`/assessments/${assessmentId}/complete`, {
+      const response = await assessmentApi.post(`/assessments/${assessmentId}/complete`, {
         answers: Object.entries(answers).map(([questionId, selectedAnswer]) => ({
           questionId,
           selectedAnswer,
@@ -201,13 +207,50 @@ const AssessmentPage: React.FC = () => {
           confidence: confidence
         })),
         confidence: confidence,
-        timeSpent: assessment.timeLimit - timeLeft
+        timeSpent: assessment!.timeLimit - timeLeft
       })
 
-      const { assessment: result } = response.data.data
-      navigate(`/dashboard?assessment=${assessmentId}`)
-    } catch (error) {
-      handleApiError(error)
+      const { assessment: _result } = response.data.data
+      
+      // Dismiss loading toast and show success
+      toast.dismiss('submission-progress')
+      toast.success('Assessment submitted successfully!', {
+        duration: 3000,
+        style: {
+          background: '#10B981',
+          color: 'white',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          padding: '16px 24px',
+          borderRadius: '8px'
+        }
+      })
+      
+      // Redirect back to video page with assessment results
+      const videoId = assessment?.videoId || 'unknown'
+      navigate(`/video/${videoId}?assessment=${assessmentId}&completed=true`)
+    } catch (error: any) {
+      console.error('Assessment submission error:', error)
+      
+      // Dismiss loading toast
+      toast.dismiss('submission-progress')
+      
+      if (error.code === 'ECONNABORTED') {
+        toast.error('Assessment submission timed out. Please try again.', {
+          duration: 8000,
+          style: {
+            background: '#EF4444',
+            color: 'white',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            padding: '16px 24px',
+            borderRadius: '8px',
+            maxWidth: '500px'
+          }
+        })
+      } else {
+        handleApiError(error)
+      }
     } finally {
       setIsSubmitting(false)
     }

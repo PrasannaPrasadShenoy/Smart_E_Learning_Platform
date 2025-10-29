@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { api, assessmentApi, handleApiError } from '../services/api'
+import { api, assessmentApi, notesApi, handleApiError } from '../services/api'
 import { progressService } from '../services/progressService'
 import { 
   ArrowLeft, 
@@ -16,9 +16,12 @@ import {
   SkipBack,
   List,
   Clock,
-  User
+  User,
+  FileText,
+  Book
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import NotesPopup from '../components/NotesPopup'
 
 // Declare YouTube API
 declare global {
@@ -72,6 +75,13 @@ const VideoPlayerPage: React.FC = () => {
   const [testGenerationProgress, setTestGenerationProgress] = useState('')
   const [questionsReady, setQuestionsReady] = useState(false)
   const [generatedAssessmentId, setGeneratedAssessmentId] = useState<string | null>(null)
+  const [videoProgressData, setVideoProgressData] = useState<any>(null)
+  const [playlistProgress, setPlaylistProgress] = useState<any>(null)
+  const [notes, setNotes] = useState<any>(null)
+  const [isGeneratingNotes, setIsGeneratingNotes] = useState(false)
+  const [notesGenerationProgress, setNotesGenerationProgress] = useState('')
+  const [showNotesPopup, setShowNotesPopup] = useState(false)
+  const [notesPopupType, setNotesPopupType] = useState<'short' | 'detailed'>('short')
   const [minWatchTime] = useState(0) // No minimum time required
   const [optimalWatchTime] = useState(60) // 1 minute for better questions
   
@@ -81,6 +91,8 @@ const VideoPlayerPage: React.FC = () => {
   useEffect(() => {
     if (videoId) {
       fetchVideoDetails()
+      loadVideoProgress()
+      loadNotes()
       
       // Check URL parameters for playlist context
       const urlParams = new URLSearchParams(window.location.search)
@@ -135,7 +147,7 @@ const VideoPlayerPage: React.FC = () => {
         setCurrentVideoIndex(response.data.data.currentIndex || 0)
         console.log('Playlist context loaded:', response.data.data.playlist.videos.length, 'videos')
       }
-    } catch (error) {
+    } catch (error: any) {
       // If no playlist context found, that's okay - video will play standalone
       console.log('No playlist context found for this video:', error.message)
     }
@@ -157,13 +169,26 @@ const VideoPlayerPage: React.FC = () => {
         console.error('No video data in response:', response.data)
         toast.error('No video data received')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching video details:', error)
       handleApiError(error)
       // Don't navigate away immediately, show error first
       toast.error('Failed to load video details')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const loadVideoProgress = async () => {
+    if (!videoId || !playlistId) return
+
+    try {
+      const response = await api.get(`/playlist-progress/${playlistId}/video/${videoId}`)
+      if (response.data.success) {
+        setVideoProgressData(response.data.data.videoProgress)
+      }
+    } catch (error: any) {
+      console.log('No progress data found for this video')
     }
   }
 
@@ -242,7 +267,7 @@ const VideoPlayerPage: React.FC = () => {
           await new Promise(resolve => setTimeout(resolve, 5000))
           attempts++
           
-        } catch (checkError) {
+        } catch (checkError: any) {
           console.log('Checking assessment status...', checkError.message)
           await new Promise(resolve => setTimeout(resolve, 5000))
           attempts++
@@ -253,7 +278,7 @@ const VideoPlayerPage: React.FC = () => {
         throw new Error('Assessment generation timed out. Please try again.')
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Assessment generation error:', error)
       
       if (error.message.includes('timed out')) {
@@ -295,6 +320,110 @@ const VideoPlayerPage: React.FC = () => {
     if (generatedAssessmentId) {
       navigate(`/assessment/${generatedAssessmentId}`)
     }
+  }
+
+  const loadNotes = async () => {
+    if (!videoId) return
+
+    try {
+      const response = await api.get(`/notes/${videoId}`)
+      if (response.data.success) {
+        setNotes(response.data.data.notes)
+      }
+    } catch (error: any) {
+      console.log('No notes found for this video')
+    }
+  }
+
+  const generateNotes = async () => {
+    if (!videoId || !video) return
+
+    try {
+      setIsGeneratingNotes(true)
+      setNotesGenerationProgress('🎬 Starting notes generation...')
+      
+      const response = await notesApi.post(`/notes/generate/${videoId}`, {
+        videoData: {
+          title: video.title,
+          thumbnail: video.thumbnail,
+          duration: video.duration
+        }
+      })
+      
+      if (response.data.success) {
+        setNotes(response.data.data.notes)
+        setNotesGenerationProgress('✅ Notes generated successfully!')
+        
+        toast.success('📝 Notes generated successfully! You can now download them as PDF.', {
+          duration: 8000,
+          position: 'top-center',
+          style: {
+            background: 'linear-gradient(135deg, #10B981, #059669)',
+            color: 'white',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            padding: '20px 32px',
+            borderRadius: '12px',
+            boxShadow: '0 8px 25px rgba(16, 185, 129, 0.3)',
+            border: '2px solid #10B981',
+            maxWidth: '400px',
+            textAlign: 'center'
+          },
+          icon: '📝',
+          iconTheme: {
+            primary: '#fff',
+            secondary: '#10B981',
+          }
+        })
+      }
+    } catch (error: any) {
+      console.error('Notes generation error:', error)
+      
+      if (error.code === 'ECONNABORTED') {
+        toast.error('Notes generation timed out. This usually takes 3-5 minutes. Please try again.', {
+          duration: 8000,
+          style: {
+            background: '#EF4444',
+            color: 'white',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            padding: '16px 24px',
+            borderRadius: '8px',
+            maxWidth: '500px'
+          }
+        })
+      } else {
+        handleApiError(error)
+      }
+    } finally {
+      setIsGeneratingNotes(false)
+      setNotesGenerationProgress('')
+    }
+  }
+
+  const showNotes = (type: 'short' | 'detailed') => {
+    if (!notes) {
+      toast.error('No notes available for this video. Please generate notes first.', {
+        duration: 5000,
+        style: {
+          background: '#EF4444',
+          color: 'white',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          padding: '16px 24px',
+          borderRadius: '8px',
+          maxWidth: '500px'
+        }
+      })
+      return
+    }
+
+    setNotesPopupType(type)
+    setShowNotesPopup(true)
+  }
+
+  const closeNotesPopup = () => {
+    setShowNotesPopup(false)
   }
 
   // External control handlers
@@ -783,6 +912,129 @@ const VideoPlayerPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Video Progress Data */}
+            {videoProgressData && (
+              <div className="card mb-4 bg-green-50 border-green-200">
+                <div className="card-header">
+                  <h3 className="card-title text-green-800">📊 Your Progress</h3>
+                </div>
+                <div className="card-content">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-green-700 font-medium">Best Score:</span>
+                      <span className="ml-2 text-green-600">{videoProgressData.bestScore}%</span>
+                    </div>
+                    <div>
+                      <span className="text-green-700 font-medium">Average Score:</span>
+                      <span className="ml-2 text-green-600">{videoProgressData.averageScore}%</span>
+                    </div>
+                    <div>
+                      <span className="text-green-700 font-medium">Attempts:</span>
+                      <span className="ml-2 text-green-600">{videoProgressData.totalAttempts}</span>
+                    </div>
+                    <div>
+                      <span className="text-green-700 font-medium">Status:</span>
+                      <span className="ml-2 text-green-600">
+                        {videoProgressData.isCompleted ? '✅ Completed' : '📚 In Progress'}
+                      </span>
+                    </div>
+                  </div>
+                  {videoProgressData.attempts && videoProgressData.attempts.length > 0 && (
+                    <div className="mt-3">
+                      <h4 className="text-xs font-medium text-green-700 mb-2">Recent Attempts:</h4>
+                      <div className="space-y-1">
+                        {videoProgressData.attempts.slice(-3).map((attempt: any, index: number) => (
+                          <div key={index} className="flex justify-between text-xs text-green-600">
+                            <span>Attempt {attempt.attemptNumber}</span>
+                            <span>{attempt.testScore}%</span>
+                            <span>{new Date(attempt.completedAt).toLocaleDateString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Notes Card */}
+            <div className="card mb-4">
+              <div className="card-header">
+                <h3 className="card-title text-lg">📝 Video Notes</h3>
+              </div>
+              <div className="card-content">
+      <p className="text-sm text-gray-600 mb-4">
+        Generate comprehensive notes with short and detailed summaries from this video.
+      </p>
+                
+                {!notes ? (
+                  <div className="space-y-3">
+                    <button
+                      onClick={generateNotes}
+                      disabled={isGeneratingNotes}
+                      className={`btn w-full ${isGeneratingNotes ? 'btn-disabled' : 'btn-primary'}`}
+                    >
+                      <Brain className="h-5 w-5 mr-2" />
+                      {isGeneratingNotes ? 'Generating Notes...' : 'Create Notes'}
+                    </button>
+                    
+                    {isGeneratingNotes && (
+                      <div className="mt-4 space-y-3">
+                        <div className="text-sm text-blue-600 text-center">
+                          {notesGenerationProgress}
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{ width: '100%' }}></div>
+                        </div>
+                        <div className="text-xs text-gray-500 text-center">
+                          This may take 3-5 minutes for comprehensive notes. Please be patient.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="flex items-center">
+              <span className="text-gray-600 font-medium">Short Notes:</span>
+              <span className="ml-2 text-blue-600">{notes.estimatedReadTime?.shortNotes || 5} min</span>
+            </div>
+            <div className="flex items-center">
+              <span className="text-gray-600 font-medium">Detailed Notes:</span>
+              <span className="ml-2 text-blue-600">{notes.estimatedReadTime?.detailedNotes || 15} min</span>
+            </div>
+          </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => showNotes('short')}
+                        className="btn btn-primary flex items-center justify-center"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        View Short Notes
+                      </button>
+                      <button
+                        onClick={() => showNotes('detailed')}
+                        className="btn btn-secondary flex items-center justify-center"
+                      >
+                        <Book className="h-4 w-4 mr-2" />
+                        View Detailed Notes
+                      </button>
+                    </div>
+                    
+                    <div className="flex justify-center">
+                      <button
+                        onClick={() => setNotes(null)}
+                        className="btn btn-outline text-sm"
+                      >
+                        🔄 Regenerate Notes
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Assessment Card */}
             <div className="card">
               <div className="card-header">
@@ -965,6 +1217,16 @@ const VideoPlayerPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Notes Popup */}
+      {notes && (
+        <NotesPopup
+          isOpen={showNotesPopup}
+          onClose={closeNotesPopup}
+          notes={notes}
+          type={notesPopupType}
+        />
+      )}
     </div>
   )
 }
