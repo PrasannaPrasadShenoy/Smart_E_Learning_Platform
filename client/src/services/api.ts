@@ -37,6 +37,80 @@ export const pdfApi = axios.create({
   },
 })
 
+// Certificates API (PDF downloads, issuance)
+export const certificateApi = axios.create({
+  baseURL: 'http://localhost:4001/api',
+  timeout: 120000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+// Request interceptor for certificate API
+certificateApi.interceptors.request.use(
+  (config) => {
+    // Add auth token if available
+    const token = localStorage.getItem('auth-storage')
+    console.log('🔐 Certificate API interceptor:', {
+      url: config.url,
+      hasToken: !!token,
+      tokenPreview: token ? token.substring(0, 50) + '...' : 'none'
+    });
+    
+    if (token) {
+      try {
+        const authData = JSON.parse(token)
+        console.log('🔐 Parsed auth data:', {
+          hasState: !!authData.state,
+          hasToken: !!authData.state?.token,
+          tokenPreview: authData.state?.token ? authData.state.token.substring(0, 20) + '...' : 'none'
+        });
+        
+        if (authData.state?.token) {
+          config.headers.Authorization = `Bearer ${authData.state.token}`
+          console.log('🔐 Authorization header set:', config.headers.Authorization.substring(0, 20) + '...');
+        }
+      } catch (error) {
+        console.error('Error parsing auth token:', error)
+      }
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
+// Response interceptor for certificate API
+certificateApi.interceptors.response.use(
+  (response) => {
+    return response
+  },
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth-storage')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    } else if (error.response?.status === 403) {
+      if (!error.config?.url?.includes('/auth/login')) {
+        toast.error('Access denied')
+      }
+    } else if (error.response?.status === 408) {
+      toast.error('Certificate operation timed out. Please try again.')
+    } else if (error.response?.status === 429) {
+      toast.error('Too many requests. Please try again later.')
+    } else if (error.response?.status >= 500) {
+      toast.error('Server error. Please try again later.')
+    } else if (error.code === 'ECONNABORTED') {
+      toast.error('Certificate operation timed out. Please try again.')
+    } else if (!error.response) {
+      toast.error('Network error. Please check your connection.')
+    }
+    return Promise.reject(error)
+  }
+)
+
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
@@ -250,6 +324,44 @@ pdfApi.interceptors.response.use(
   }
 )
 
+// Auth for certificate API
+certificateApi.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth-storage')
+    if (token) {
+      try {
+        const authData = JSON.parse(token)
+        if (authData.state?.token) {
+          config.headers.Authorization = `Bearer ${authData.state.token}`
+        }
+      } catch (error) {
+        console.error('Error parsing auth token:', error)
+      }
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
+
+certificateApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth-storage')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    } else if (error.response?.status === 403) {
+      toast.error('Access denied')
+    } else if (error.response?.status >= 500) {
+      toast.error('Server error. Please try again later.')
+    } else if (error.code === 'ECONNABORTED') {
+      toast.error('Certificate request timed out. Please try again.')
+    }
+    return Promise.reject(error)
+  }
+)
+
 // API endpoints
 export const endpoints = {
   // Auth
@@ -288,6 +400,13 @@ export const endpoints = {
     recommendations: (userId: string) => `/feedback/user/${userId}/recommendations`,
     insights: (userId: string) => `/feedback/user/${userId}/insights`,
     suggestedTopics: (userId: string) => `/feedback/user/${userId}/suggested-topics`,
+  },
+  
+  // Certificates
+  certificates: {
+    issue: (playlistId: string) => `/certificates/issue/${playlistId}`,
+    my: '/certificates/my',
+    download: (id: string) => `/certificates/${id}/download`,
   },
 }
 

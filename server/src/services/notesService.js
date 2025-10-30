@@ -22,9 +22,9 @@ class NotesService {
         return existingNotes;
       }
 
-      // Step 1: Get transcript
+      // Step 1: Get transcript (will use cache if available)
       console.log('🎬 Step 1: Getting video transcript...');
-      const transcriptData = await assemblyaiService.getTranscript(videoId);
+      const transcriptData = await assemblyaiService.getTranscriptWithFallback(videoId);
       
       if (!transcriptData || !transcriptData.transcript) {
         throw new Error('No transcript available for this video');

@@ -56,6 +56,9 @@ class YouTubeService {
         throw new Error('YouTube API key not configured');
       }
 
+      console.log(`🔍 Fetching playlist details for: ${playlistId}`);
+      console.log(`🔑 Using API key: ${this.apiKey ? `${this.apiKey.substring(0, 10)}...` : 'NOT SET'}`);
+
       // Get playlist info
       const playlistResponse = await axios.get(`${this.baseUrl}/playlists`, {
         params: {
@@ -64,6 +67,9 @@ class YouTubeService {
           key: this.apiKey
         }
       });
+
+      console.log(`📊 Playlist API response status: ${playlistResponse.status}`);
+      console.log(`📊 Playlist API response items: ${playlistResponse.data.items?.length || 0}`);
 
       if (!playlistResponse.data.items.length) {
         throw new Error('Playlist not found');
@@ -104,7 +110,19 @@ class YouTubeService {
 
     } catch (error) {
       console.error('YouTube playlist error:', error.message);
-      throw new Error('Failed to fetch playlist details');
+      
+      // Provide more specific error messages
+      if (error.response?.status === 403) {
+        throw new Error('YouTube API quota exceeded or API key invalid');
+      } else if (error.response?.status === 404) {
+        throw new Error('Playlist not found or is private');
+      } else if (error.response?.status === 400) {
+        throw new Error('Invalid playlist ID format');
+      } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+        throw new Error('Network error connecting to YouTube API');
+      } else {
+        throw new Error(`Failed to fetch playlist details: ${error.message}`);
+      }
     }
   }
 

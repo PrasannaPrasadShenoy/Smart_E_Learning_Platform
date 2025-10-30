@@ -266,9 +266,9 @@ const getQuestionsForAssessment = async (courseId, videoId, numQuestions = 5, di
     if (questions.length < numQuestions) {
       console.log(`Not enough questions in database (${questions.length}/${numQuestions}), generating new ones...`);
       
-      // Get transcript to generate questions
-      const transcriptService = require('./transcriptService');
-      const transcriptData = await transcriptService.getTranscript(videoId);
+      // Get transcript to generate questions (will use cache if available)
+      const assemblyaiService = require('./assemblyaiService');
+      const transcriptData = await assemblyaiService.getTranscriptWithFallback(videoId);
       
       console.log('Transcript data for question generation:', {
         hasTranscript: transcriptData?.hasTranscript,

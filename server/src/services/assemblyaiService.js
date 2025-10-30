@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const config = require('../config/env');
+const Transcript = require('../models/Transcript');
 
 class AssemblyAIService {
   constructor() {
@@ -215,6 +216,28 @@ class AssemblyAIService {
 
       console.log(`Getting transcript for video: ${videoId}`);
 
+      // Cache: check existing transcript first
+      try {
+        const cached = await Transcript.findOne({ videoId });
+        if (cached && cached.transcript && cached.transcript.length > 50) {
+          console.log('✅ Using cached transcript from database');
+          await cached.touchLastUsed();
+          return {
+            transcript: cached.transcript,
+            language: cached.language || 'en',
+            wordCount: cached.wordCount || (cached.transcript.split(' ').length),
+            duration: cached.duration || 0,
+            hasTranscript: true,
+            summary: '',
+            highlights: [],
+            sentiment: [],
+            source: cached.source || 'cache'
+          };
+        }
+      } catch (cacheErr) {
+        console.warn('⚠️ Transcript cache lookup failed:', cacheErr.message);
+      }
+
       // Step 1: Extract audio from YouTube
       const audioPath = await this.extractAudioFromYouTube(videoId);
 
@@ -255,6 +278,31 @@ class AssemblyAIService {
         duration: transcriptData.duration
       });
 
+      // Save/update cache
+      try {
+        const savedTranscript = await Transcript.findOneAndUpdate(
+          { videoId },
+          {
+            videoId,
+            transcript: transcriptData.transcript,
+            language: transcriptData.language,
+            wordCount: transcriptData.wordCount,
+            duration: transcriptData.duration,
+            source: 'assemblyai',
+            'metadata.lastUsedAt': new Date()
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        console.log('🗄️ Transcript cached in database:', {
+          videoId: savedTranscript.videoId,
+          transcriptLength: savedTranscript.transcript.length,
+          wordCount: savedTranscript.wordCount,
+          language: savedTranscript.language
+        });
+      } catch (saveErr) {
+        console.warn('⚠️ Failed to cache transcript:', saveErr.message);
+      }
+
       return transcriptData;
 
     } catch (error) {
@@ -276,7 +324,35 @@ class AssemblyAIService {
       console.error('AssemblyAI failed, trying YouTube fallback:', error.message);
       
       // Fallback to YouTube transcript API
-      return await this.getYouTubeTranscriptFallback(videoId);
+      const transcriptData = await this.getYouTubeTranscriptFallback(videoId);
+
+      // Save/update cache from fallback as well
+      try {
+        const savedTranscript = await Transcript.findOneAndUpdate(
+          { videoId },
+          {
+            videoId,
+            transcript: transcriptData.transcript,
+            language: transcriptData.language,
+            wordCount: transcriptData.wordCount,
+            duration: transcriptData.duration,
+            source: transcriptData.source || 'youtube_fallback',
+            'metadata.lastUsedAt': new Date()
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        console.log('🗄️ Transcript (fallback) cached in database:', {
+          videoId: savedTranscript.videoId,
+          transcriptLength: savedTranscript.transcript.length,
+          wordCount: savedTranscript.wordCount,
+          language: savedTranscript.language,
+          source: savedTranscript.source
+        });
+      } catch (saveErr) {
+        console.warn('⚠️ Failed to cache fallback transcript:', saveErr.message);
+      }
+
+      return transcriptData;
     }
   }
 
@@ -334,6 +410,56 @@ class AssemblyAIService {
     } catch (fallbackError) {
       console.error('YouTube fallback also failed:', fallbackError.message);
       throw new Error('Both AssemblyAI and YouTube transcript failed');
+    }
+  }
+
+  /**
+   * Verify transcript storage and integrity
+   * @param {string} videoId - YouTube video ID
+   * @returns {Promise<Object>} Verification result
+   */
+  async verifyTranscriptStorage(videoId) {
+    try {
+      const transcript = await Transcript.findOne({ videoId });
+      
+      if (!transcript) {
+        return {
+          exists: false,
+          message: 'Transcript not found in database'
+        };
+      }
+
+      const verification = {
+        exists: true,
+        videoId: transcript.videoId,
+        transcriptLength: transcript.transcript.length,
+        wordCount: transcript.wordCount,
+        language: transcript.language,
+        source: transcript.source,
+        createdAt: transcript.createdAt,
+        lastUsed: transcript.metadata.lastUsedAt,
+        isValid: transcript.transcript.length > 50 && transcript.wordCount > 10,
+        issues: []
+      };
+
+      // Check for potential issues
+      if (transcript.transcript.length < 50) {
+        verification.issues.push('Transcript too short');
+      }
+      if (transcript.wordCount < 10) {
+        verification.issues.push('Word count too low');
+      }
+      if (!transcript.language) {
+        verification.issues.push('Language not detected');
+      }
+
+      return verification;
+    } catch (error) {
+      console.error('Error verifying transcript storage:', error);
+      return {
+        exists: false,
+        error: error.message
+      };
     }
   }
 

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api, handleApiError } from '../services/api'
+import { api, certificateApi, handleApiError } from '../services/api'
 import { progressService, CourseProgress } from '../services/progressService'
+import { useAuthStore } from '../store/authStore'
+import toast from 'react-hot-toast'
 import { 
   Play, 
   Clock, 
@@ -14,10 +16,12 @@ import {
   Bookmark,
   CheckCircle,
   Circle,
-  TrendingUp
+  TrendingUp,
+  Award,
+  Download,
+  Trophy
 } from 'lucide-react'
 import VideoPlayer from '../components/VideoPlayer'
-import toast from 'react-hot-toast'
 
 interface Video {
   videoId: string
@@ -51,12 +55,16 @@ const PlaylistPage: React.FC = () => {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null)
   const [progress, setProgress] = useState<CourseProgress | null>(null)
   const [isLoadingProgress, setIsLoadingProgress] = useState(false)
+  const [playlistProgress, setPlaylistProgress] = useState<any>(null)
+  const [certificate, setCertificate] = useState<any>(null)
+  const [isLoadingCertificate, setIsLoadingCertificate] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
     if (playlistId) {
       fetchCourse()
       fetchProgress()
+      fetchPlaylistProgress()
     }
   }, [playlistId])
 
@@ -96,6 +104,50 @@ const PlaylistPage: React.FC = () => {
       setIsLoadingProgress(false)
     }
   }
+
+  const fetchPlaylistProgress = async () => {
+    if (!playlistId) return
+
+    try {
+      const response = await api.get(`/playlist-progress/${playlistId}`)
+      const progress = response.data.data.progress
+      setPlaylistProgress(progress)
+      
+      // Check if playlist is completed and fetch certificate
+      if (progress?.isCompleted) {
+        fetchCertificate()
+      }
+    } catch (error) {
+      console.log('No playlist progress found:', error)
+      setPlaylistProgress(null)
+    }
+  }
+
+  const fetchCertificate = async () => {
+    if (!playlistId) return
+
+    setIsLoadingCertificate(true)
+    try {
+      const response = await api.get('/certificates/my')
+      const certificates = response.data.data.certificates
+      const playlistCert = certificates.find((cert: any) => cert.playlistId === playlistId)
+      setCertificate(playlistCert)
+    } catch (error) {
+      console.log('No certificate found for this playlist')
+      setCertificate(null)
+    } finally {
+      setIsLoadingCertificate(false)
+    }
+  }
+
+  // Auto-fetch certificate when progress reaches 100%
+  useEffect(() => {
+    if (progress && progress.completionPercentage === 100) {
+      fetchCertificate()
+    }
+  }, [progress?.completionPercentage, playlistId])
+
+  // duplicate removed below at ~285
 
   const handleVideoSelect = (video: Video) => {
     setSelectedVideo(video)
@@ -176,8 +228,70 @@ const PlaylistPage: React.FC = () => {
   }
 
   const isVideoCompleted = (videoId: string): boolean => {
-    if (!progress) return false
+    if (!progress || !progress.completedVideos) return false
     return progress.completedVideos.some(v => v.videoId === videoId)
+  }
+
+  // Check if all videos are completed
+  const isAllVideosCompleted = (): boolean => {
+    if (!progress || !course) return false
+    return progress.completedVideos.length === course.videos.length && course.videos.length > 0
+  }
+
+  const generateCertificate = async () => {
+    if (!playlistId) return
+
+    // Check if user is logged in
+    const { token, user } = useAuthStore.getState()
+    if (!token || !user) {
+      toast.error('Please log in to generate certificate')
+      return
+    }
+
+    setIsLoadingCertificate(true)
+    try {
+      // Debug: Check auth token
+      const token = localStorage.getItem('auth-storage')
+      console.log('🔐 Frontend auth token check:', {
+        hasToken: !!token,
+        tokenPreview: token ? token.substring(0, 50) + '...' : 'none',
+        userFromStore: !!user,
+        tokenFromStore: !!token
+      })
+
+      // Use certificateApi with longer timeout
+      const response = await certificateApi.post(`/certificates/issue/${playlistId}`)
+      if (response.data.success) {
+        setCertificate(response.data.data.certificate)
+        toast.success('Certificate generated successfully!')
+      }
+    } catch (error) {
+      console.error('Certificate generation error:', error)
+      handleApiError(error)
+    } finally {
+      setIsLoadingCertificate(false)
+    }
+  }
+
+  const downloadCertificate = async () => {
+    try {
+      if (!certificate) return
+      const response = await certificateApi.get(`/certificates/${certificate._id}/download`, {
+        responseType: 'blob'
+      })
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const safeTitle = (course?.title || 'certificate').replace(/[^a-z0-9\-\s]/gi, '')
+      link.download = `${safeTitle}_certificate.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      handleApiError(error)
+    }
   }
 
   if (isLoading) {
@@ -274,27 +388,87 @@ const PlaylistPage: React.FC = () => {
                 </div>
               </div>
               
-              {/* Progress Indicator */}
+              {/* Progress Indicator with Certificate */}
               {progress && (
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                <div className={`mt-4 p-4 rounded-lg ${
+                  progress.completionPercentage === 100 
+                    ? 'bg-green-50 border border-green-200' 
+                    : 'bg-blue-50'
+                }`}>
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-medium text-blue-900">Your Progress</h3>
-                    <span className="text-sm font-medium text-blue-700">
+                    <h3 className={`text-lg font-medium ${
+                      progress.completionPercentage === 100 ? 'text-green-900' : 'text-blue-900'
+                    }`}>
+                      {progress.completionPercentage === 100 ? 'Course Completed!' : 'Your Progress'}
+                    </h3>
+                    <span className={`text-sm font-medium ${
+                      progress.completionPercentage === 100 ? 'text-green-700' : 'text-blue-700'
+                    }`}>
                       {progress.completionPercentage}% Complete
                     </span>
                   </div>
-                  <div className="w-full bg-blue-200 rounded-full h-2 mb-2">
+                  <div className={`w-full rounded-full h-2 mb-2 ${
+                    progress.completionPercentage === 100 ? 'bg-green-200' : 'bg-blue-200'
+                  }`}>
                     <div 
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        progress.completionPercentage === 100 ? 'bg-green-600' : 'bg-blue-600'
+                      }`}
                       style={{ width: `${progress.completionPercentage}%` }}
                     />
                   </div>
-                  <div className="flex items-center justify-between text-sm text-blue-700">
-                    <span>{progress.completedVideos.length} of {progress.totalVideos} videos completed</span>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className={progress.completionPercentage === 100 ? 'text-green-700' : 'text-blue-700'}>
+                      {progress.completedVideos.length} of {progress.totalVideos} videos completed
+                    </span>
                     {progress.averageTestScore > 0 && (
-                      <span>Avg Test Score: {progress.averageTestScore}%</span>
+                      <span className={progress.completionPercentage === 100 ? 'text-green-700' : 'text-blue-700'}>
+                        Avg Test Score: {progress.averageTestScore}%
+                      </span>
                     )}
                   </div>
+
+                  {/* Certificate Section - Only show when all videos are completed */}
+                  {isAllVideosCompleted() && (
+                    <div className="mt-4 p-3 bg-white rounded-lg border border-green-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <Award className="h-5 w-5 text-yellow-500 mr-2" />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">
+                              Certificate Available
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              Congratulations! You've completed all {progress.totalVideos} videos.
+                            </p>
+                          </div>
+                        </div>
+                        {certificate ? (
+                          <button
+                            onClick={downloadCertificate}
+                            className="btn btn-sm btn-primary flex items-center"
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            Download
+                          </button>
+                        ) : isLoadingCertificate ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                        ) : (
+                          <button
+                            onClick={generateCertificate}
+                            className="btn btn-sm btn-primary"
+                          >
+                            Generate Certificate
+                          </button>
+                        )}
+                      </div>
+                      {certificate && (
+                        <div className="mt-2 text-xs text-gray-600">
+                          Certificate #{certificate.certificateNumber} • Issued {new Date(certificate.issuedAt).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

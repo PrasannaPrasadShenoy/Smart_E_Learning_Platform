@@ -1,5 +1,6 @@
 const express = require('express');
 const { query, param } = require('express-validator');
+const axios = require('axios');
 const {
   searchPlaylists,
   getPlaylistDetails,
@@ -67,6 +68,51 @@ const paginationValidation = [
     .isIn(['asc', 'desc'])
     .withMessage('Sort order must be asc or desc')
 ];
+
+// Test endpoint for YouTube API
+router.get('/test-api', authenticateToken, async (req, res) => {
+  try {
+    const apiKey = process.env.YOUTUBE_DATA_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'YouTube API key not configured'
+      });
+    }
+
+    // Test with a simple search
+    const testResponse = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+      params: {
+        part: 'snippet',
+        q: 'test',
+        maxResults: 1,
+        key: apiKey
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'YouTube API key is working',
+      data: {
+        apiKeyConfigured: true,
+        testResults: testResponse.data.items?.length || 0
+      }
+    });
+  } catch (error) {
+    console.error('YouTube API test error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'YouTube API test failed',
+      error: error.message,
+      details: {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        apiKeyConfigured: !!process.env.YOUTUBE_DATA_API_KEY
+      }
+    });
+  }
+});
 
 // Routes
 router.get('/search', searchValidation, searchPlaylists);

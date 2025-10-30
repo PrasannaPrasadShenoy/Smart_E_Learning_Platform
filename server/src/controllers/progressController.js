@@ -137,6 +137,36 @@ const markVideoCompleted = asyncHandler(async (req, res) => {
 
     await progress.updateProgress(videoId, videoTitle, watchTime);
 
+    // Check if course is 100% completed and trigger certificate generation
+    if (progress.completionPercentage === 100) {
+      try {
+        const certificateService = require('../services/certificateService');
+        const User = require('../models/User');
+        
+        // Get user details
+        const user = await User.findById(userId);
+        if (user) {
+          // Check if certificate already exists
+          const Certificate = require('../models/Certificate');
+          const existingCert = await Certificate.findOne({
+            userId,
+            playlistId: courseId
+          });
+          
+          if (!existingCert) {
+            console.log(`🎓 Course 100% completed, generating certificate for: ${courseId}`);
+            const result = await certificateService.issueCertificate(user, courseId);
+            if (result.success) {
+              console.log(`✅ Certificate generated: ${result.certificate.certificateNumber}`);
+            }
+          }
+        }
+      } catch (certError) {
+        console.error('Error generating certificate:', certError);
+        // Don't fail the main request if certificate generation fails
+      }
+    }
+
     res.json({
       success: true,
       message: 'Video marked as completed',

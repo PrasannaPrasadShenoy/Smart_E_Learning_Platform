@@ -16,6 +16,9 @@ const feedbackRoutes = require('./routes/feedbackRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const playlistProgressRoutes = require('./routes/playlistProgressRoutes');
 const notesRoutes = require('./routes/notesRoutes');
+const certificateRoutes = require('./routes/certificateRoutes');
+const transcriptRoutes = require('./routes/transcriptRoutes');
+const completedCourseRoutes = require('./routes/completedCourseRoutes');
 
 // Initialize Express app
 const app = express();
@@ -67,6 +70,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Compression middleware
 app.use(compression());
 
+// Prevent noisy 404s for favicon in dev
+app.get('/favicon.ico', (req, res) => {
+  // No favicon served by API server; return empty response
+  res.status(204).end();
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
@@ -85,6 +94,9 @@ app.use('/api/feedback', feedbackRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/playlist-progress', playlistProgressRoutes);
 app.use('/api/notes', notesRoutes);
+app.use('/api/transcripts', transcriptRoutes);
+app.use('/api/certificates', certificateRoutes);
+app.use('/api/completed-courses', completedCourseRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -97,7 +109,12 @@ app.get('/', (req, res) => {
       youtube: '/api/youtube',
       assessments: '/api/assessments',
       feedback: '/api/feedback',
-      progress: '/api/progress'
+      progress: '/api/progress',
+      playlistProgress: '/api/playlist-progress',
+      notes: '/api/notes',
+      transcripts: '/api/transcripts',
+      certificates: '/api/certificates',
+      completedCourses: '/api/completed-courses'
     }
   });
 });

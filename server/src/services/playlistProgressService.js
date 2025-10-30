@@ -237,6 +237,45 @@ class PlaylistProgressService {
       throw error;
     }
   }
+
+  /**
+   * Get completed playlists with certificates
+   * @param {string} userId - User ID
+   * @returns {Promise<Array>} Completed playlists with certificate info
+   */
+  async getCompletedPlaylistsWithCertificates(userId) {
+    try {
+      const completedProgress = await PlaylistProgress.find({
+        userId,
+        isCompleted: true
+      }).sort({ completedAt: -1 });
+
+      const Certificate = require('../models/Certificate');
+      const playlistsWithCerts = await Promise.all(
+        completedProgress.map(async (progress) => {
+          const certificate = await Certificate.findOne({
+            userId,
+            playlistId: progress.playlistId
+          });
+
+          return {
+            ...progress.toObject(),
+            certificate: certificate ? {
+              id: certificate._id,
+              certificateNumber: certificate.certificateNumber,
+              issuedAt: certificate.issuedAt,
+              certificatePath: certificate.certificatePath
+            } : null
+          };
+        })
+      );
+
+      return playlistsWithCerts;
+    } catch (error) {
+      console.error('Error getting completed playlists with certificates:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new PlaylistProgressService();

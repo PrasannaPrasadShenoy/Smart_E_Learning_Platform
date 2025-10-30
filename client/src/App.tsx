@@ -12,6 +12,7 @@ import VideoPlayerPage from './pages/VideoPlayerPage'
 import AssessmentPage from './pages/AssessmentPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
+import CompletedPage from './pages/CompletedPage'
 
 // Components
 import Navbar from './components/Navbar'
@@ -93,6 +94,10 @@ function App() {
             <Route 
               path="/profile" 
               element={user ? <ProfilePage /> : <Navigate to="/login" replace />} 
+            />
+            <Route 
+              path="/profile/completed" 
+              element={user ? <CompletedPage /> : <Navigate to="/login" replace />} 
             />
             
             {/* Catch all route */}

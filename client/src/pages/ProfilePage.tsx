@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuthStore } from '../store/authStore'
-import { handleApiError } from '../services/api'
+import { api, certificateApi, handleApiError } from '../services/api'
 import { progressService, CourseProgress, ProgressStats } from '../services/progressService'
 import { 
   User, 
@@ -16,7 +16,9 @@ import {
   TrendingUp,
   Clock,
   Target,
-  Award
+  Award,
+  Trophy,
+  Download
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -34,7 +36,7 @@ interface PasswordForm {
 }
 
 const ProfilePage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'password' | 'progress'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'password' | 'progress' | 'certificates'>('profile')
   const [isUpdating, setIsUpdating] = useState(false)
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -42,6 +44,8 @@ const ProfilePage: React.FC = () => {
   const [progress, setProgress] = useState<CourseProgress[]>([])
   const [progressStats, setProgressStats] = useState<ProgressStats | null>(null)
   const [isLoadingProgress, setIsLoadingProgress] = useState(false)
+  const [completedCourses, setCompletedCourses] = useState<any[]>([])
+  const [isLoadingCertificates, setIsLoadingCertificates] = useState(false)
   
   const { user, updateProfile, isLoading } = useAuthStore()
   
@@ -76,6 +80,8 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'progress') {
       fetchProgress()
+    } else if (activeTab === 'certificates') {
+      fetchCompletedCourses()
     }
   }, [activeTab])
 
@@ -93,6 +99,42 @@ const ProfilePage: React.FC = () => {
       handleApiError(error)
     } finally {
       setIsLoadingProgress(false)
+    }
+  }
+
+  const fetchCompletedCourses = async () => {
+    setIsLoadingCertificates(true)
+    try {
+      // Fetch completed courses from the completed courses API
+      const response = await api.get('/completed-courses')
+      const completedCourses = response.data.data.completedCourses || []
+      
+      setCompletedCourses(completedCourses)
+    } catch (error) {
+      console.error('Error fetching completed courses:', error)
+      handleApiError(error)
+    } finally {
+      setIsLoadingCertificates(false)
+    }
+  }
+
+  const downloadCertificate = async (certificateId: string, playlistTitle: string) => {
+    try {
+      const response = await certificateApi.get(`/certificates/${certificateId}/download`, {
+        responseType: 'blob'
+      })
+
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${playlistTitle.replace(/[^a-z0-9\-\s]/gi, '')}_certificate.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      handleApiError(error)
     }
   }
 
@@ -195,6 +237,24 @@ const ProfilePage: React.FC = () => {
                 >
                   <TrendingUp className="h-4 w-4 mr-2 inline" />
                   Learning Progress
+                </button>
+                <button
+                  onClick={() => setActiveTab('certificates')}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    activeTab === 'certificates'
+                      ? 'bg-primary-100 text-primary-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <Award className="h-4 w-4 mr-2 inline" />
+                  Certificates (inline)
+                </button>
+                <button
+                  onClick={() => window.location.assign('/profile/completed')}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors text-gray-600 hover:text-gray-900 hover:bg-gray-100`}
+                >
+                  <Award className="h-4 w-4 mr-2 inline" />
+                  Completed & Certificates (page)
                 </button>
               </nav>
             </div>
@@ -579,6 +639,112 @@ const ProfilePage: React.FC = () => {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Certificates Tab */}
+          {activeTab === 'certificates' && (
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title">Completed Courses & Certificates</h3>
+                <p className="card-description">
+                  View your completed courses and download certificates
+                </p>
+              </div>
+              <div className="card-content">
+                {isLoadingCertificates ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+                  </div>
+                ) : completedCourses.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Award className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      No completed courses yet
+                    </h3>
+                    <p className="text-gray-600 mb-4">
+                      Complete a playlist to earn your first certificate!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {completedCourses.map((course) => (
+                      <div key={course._id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center mb-2">
+                              <Trophy className="h-5 w-5 text-yellow-500 mr-2" />
+                              <h4 className="text-lg font-semibold text-gray-900">
+                                {course.courseTitle}
+                              </h4>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                              <div className="flex items-center">
+                                <BookOpen className="h-4 w-4 mr-1" />
+                                {course.completedVideos} of {course.totalVideos} videos completed
+                              </div>
+                              <div className="flex items-center">
+                                <Clock className="h-4 w-4 mr-1" />
+                                {course.completedAt ? `Completed ${new Date(course.completedAt).toLocaleDateString()}` : 'Completion date unavailable'}
+                              </div>
+                              {course.averageTestScore > 0 && (
+                                <div className="flex items-center">
+                                  <Target className="h-4 w-4 mr-1" />
+                                  {course.averageTestScore}% average score
+                                </div>
+                              )}
+                              <div className="flex items-center">
+                                <TrendingUp className="h-4 w-4 mr-1" />
+                                {Math.round((course.totalWatchTime || 0) / 60)} min total time
+                              </div>
+                            </div>
+
+                            {course.certificateId ? (
+                              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center">
+                                    <Award className="h-5 w-5 text-green-600 mr-2" />
+                                    <div>
+                                      <p className="text-sm font-medium text-green-900">
+                                        Certificate Available
+                                      </p>
+                                      {course.certificateNumber ? (
+                                        <p className="text-xs text-green-700">
+                                          #{course.certificateNumber}
+                                          {course.certificateIssuedAt ? ` • Issued ${new Date(course.certificateIssuedAt).toLocaleDateString()}` : ''}
+                                        </p>
+                                      ) : (
+                                        <p className="text-xs text-green-700">Certificate ready</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => downloadCertificate(course.certificateId, course.courseTitle || 'Course')}
+                                    className="btn btn-sm btn-primary flex items-center"
+                                  >
+                                    <Download className="h-4 w-4 mr-1" />
+                                    Download
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                <div className="flex items-center">
+                                  <Loader2 className="h-4 w-4 animate-spin text-yellow-600 mr-2" />
+                                  <p className="text-sm text-yellow-800">
+                                    Certificate is being generated...
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

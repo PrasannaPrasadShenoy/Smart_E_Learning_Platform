@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { api, assessmentApi, notesApi, handleApiError } from '../services/api'
+import { api, assessmentApi, notesApi, certificateApi, endpoints, handleApiError } from '../services/api'
 import { progressService } from '../services/progressService'
 import { 
   ArrowLeft, 
@@ -82,6 +82,8 @@ const VideoPlayerPage: React.FC = () => {
   const [notesGenerationProgress, setNotesGenerationProgress] = useState('')
   const [showNotesPopup, setShowNotesPopup] = useState(false)
   const [notesPopupType, setNotesPopupType] = useState<'short' | 'detailed'>('short')
+  const [isIssuingCertificate, setIsIssuingCertificate] = useState(false)
+  const [issuedCertificateId, setIssuedCertificateId] = useState<string | null>(null)
   const [minWatchTime] = useState(0) // No minimum time required
   const [optimalWatchTime] = useState(60) // 1 minute for better questions
   
@@ -426,6 +428,51 @@ const VideoPlayerPage: React.FC = () => {
     setShowNotesPopup(false)
   }
 
+  const isPlaylistCompleted = () => {
+    if (!playlistProgress || !playlistProgress.videos) return false
+    const total = playlistProgress.videos.length
+    const completed = playlistProgress.videos.filter((v: any) => v.completed).length
+    return total > 0 && completed === total
+  }
+
+  const issueCertificate = async () => {
+    if (!playlistId) {
+      toast.error('No playlist context found')
+      return
+    }
+    if (!isPlaylistCompleted()) {
+      toast.error('Complete all videos in the playlist to get the certificate')
+      return
+    }
+
+    try {
+      setIsIssuingCertificate(true)
+      const res = await certificateApi.post(endpoints.certificates.issue(playlistId))
+      if (res.data?.success) {
+        const certId = res.data.data?.certificate?._id
+        setIssuedCertificateId(certId)
+        toast.success('🎉 Certificate issued! You can download it now.', { duration: 4000 })
+      }
+    } catch (error: any) {
+      handleApiError(error)
+    } finally {
+      setIsIssuingCertificate(false)
+    }
+  }
+
+  const downloadCertificate = async () => {
+    if (!issuedCertificateId) {
+      toast.error('Certificate not ready yet')
+      return
+    }
+    try {
+      const url = `${certificateApi.defaults.baseURL}${endpoints.certificates.download(issuedCertificateId)}`
+      window.open(url as string, '_blank')
+    } catch (error: any) {
+      handleApiError(error)
+    }
+  }
+
   // External control handlers
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying)
@@ -508,12 +555,23 @@ const VideoPlayerPage: React.FC = () => {
     if (!video || !playlistId) return
 
     try {
-      await progressService.markVideoCompleted(
-        playlistId,
-        video.id,
-        video.title
-      )
+      // Use playlist progress service instead of course progress
+      const response = await api.post(`/playlist-progress/${playlistId}/video/${video.id}/complete`, {
+        isCompleted: true,
+        completionPercentage: 100,
+        watchTime: watchTime
+      })
+      
       console.log('Video marked as completed:', video.title)
+      
+      // Refresh playlist progress to update UI
+      if (response.data.success) {
+        // Trigger a refresh of the playlist page if we're in a playlist context
+        if (playlistId) {
+          // You could emit an event or use a state management solution here
+          console.log('Playlist progress updated')
+        }
+      }
     } catch (error) {
       console.error('Error marking video as completed:', error)
     }
@@ -1033,7 +1091,7 @@ const VideoPlayerPage: React.FC = () => {
                   </div>
                 )}
               </div>
-            </div>
+          </div>
 
             {/* Assessment Card */}
             <div className="card">
@@ -1217,6 +1275,46 @@ const VideoPlayerPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Certificate Card (only when playlist context exists) */}
+      {playlistId && (
+        <div className="card mb-4">
+          <div className="card-header">
+            <h3 className="card-title text-lg">🏅 Certificate of Completion</h3>
+          </div>
+          <div className="card-content space-y-3">
+            {isPlaylistCompleted() ? (
+              <>
+                <p className="text-sm text-gray-600">You've completed all videos in this playlist. Issue your professional certificate.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={issueCertificate}
+                    disabled={isIssuingCertificate}
+                    className={`btn ${isIssuingCertificate ? 'btn-disabled' : 'btn-primary'}`}
+                  >
+                    {isIssuingCertificate ? (
+                      <>
+                        <Loader2 className="h-5 w-5 mr-2 animate-spin" /> Issuing...
+                      </>
+                    ) : (
+                      'Issue Certificate'
+                    )}
+                  </button>
+                  <button
+                    onClick={downloadCertificate}
+                    disabled={!issuedCertificateId}
+                    className={`btn btn-outline ${!issuedCertificateId ? 'btn-disabled' : ''}`}
+                  >
+                    Download
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-600">Complete all videos in the playlist to unlock your certificate.</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Notes Popup */}
       {notes && (

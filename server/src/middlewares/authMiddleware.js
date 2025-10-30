@@ -9,6 +9,14 @@ const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
+    console.log('🔐 Auth check:', {
+      url: req.url,
+      method: req.method,
+      hasAuthHeader: !!authHeader,
+      authHeader: authHeader ? authHeader.substring(0, 20) + '...' : 'none',
+      hasToken: !!token
+    });
+
     if (!token) {
       return res.status(401).json({
         success: false,

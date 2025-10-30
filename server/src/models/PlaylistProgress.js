@@ -179,9 +179,15 @@ playlistProgressSchema.methods.calculateOverallProgress = function() {
     : 0;
   
   // Check if playlist is completed
+  const wasCompleted = this.isCompleted;
   this.isCompleted = completedVideos === totalVideos;
   if (this.isCompleted && !this.completedAt) {
     this.completedAt = new Date();
+    
+    // Auto-generate certificate if playlist just got completed
+    if (!wasCompleted) {
+      this.triggerCertificateGeneration();
+    }
   }
 };
 
@@ -256,6 +262,45 @@ playlistProgressSchema.methods.addAssessmentAttempt = function(videoId, attemptD
   
   // Recalculate overall progress
   this.calculateOverallProgress();
+};
+
+// Trigger certificate generation when playlist is completed
+playlistProgressSchema.methods.triggerCertificateGeneration = async function() {
+  try {
+    const certificateService = require('../services/certificateService');
+    const User = require('./User');
+    
+    // Get user details
+    const user = await User.findById(this.userId);
+    if (!user) {
+      console.log('User not found for certificate generation');
+      return;
+    }
+    
+    // Check if certificate already exists
+    const Certificate = require('./Certificate');
+    const existingCert = await Certificate.findOne({
+      userId: this.userId,
+      playlistId: this.playlistId
+    });
+    
+    if (existingCert) {
+      console.log('Certificate already exists for this playlist');
+      return;
+    }
+    
+    // Generate certificate
+    console.log(`🎓 Auto-generating certificate for completed playlist: ${this.playlistTitle}`);
+    const result = await certificateService.issueCertificate(user, this.playlistId);
+    
+    if (result.success) {
+      console.log(`✅ Certificate generated successfully: ${result.certificate.certificateNumber}`);
+    } else {
+      console.log(`❌ Certificate generation failed: ${result.reason}`);
+    }
+  } catch (error) {
+    console.error('Error auto-generating certificate:', error);
+  }
 };
 
 module.exports = mongoose.model('PlaylistProgress', playlistProgressSchema);
