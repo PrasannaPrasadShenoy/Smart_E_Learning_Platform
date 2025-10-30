@@ -20,11 +20,12 @@ services:
     container_name: ila-server
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "4001:4001"
     environment:
       - NODE_ENV=production
-      - PORT=4000
+      - PORT=4001
       - MONGO_URI=mongodb://admin:password@mongodb:27017/ila-db?authSource=admin
+      - CLIENT_URL=http://localhost:5173
     depends_on:
       - mongodb
     volumes:
@@ -38,7 +39,9 @@ services:
     container_name: ila-client
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE=http://localhost:4001/api
     depends_on:
       - server
 

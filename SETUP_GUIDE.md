@@ -1,4 +1,4 @@
-# 🚀 **ILA Setup Guide - AssemblyAI Integration**
+# 🚀 ILA Setup Guide (Updated)
 
 ## ✅ **What's Working Now:**
 - ✅ **yt-dlp** installed and working
@@ -7,13 +7,13 @@
 - ✅ **AssemblyAI service** integrated
 - ✅ **Fallback mechanisms** in place
 
-## 🔧 **Required Environment Variables**
+## 🔧 Required Environment Variables
 
 Add these to your `Smart_E_Learning_Platform/server/.env` file:
 
 ```env
 # Server Configuration
-PORT=4000
+PORT=4001
 NODE_ENV=development
 
 # Database
@@ -31,7 +31,7 @@ YOUTUBE_DATA_API_KEY=your-youtube-data-api-key-here
 CLIENT_URL=http://localhost:5173
 ```
 
-## 🔑 **Get Your AssemblyAI API Key:**
+## 🔑 Get Your AssemblyAI API Key
 
 1. Go to [https://www.assemblyai.com](https://www.assemblyai.com)
 2. Sign up for free account
@@ -39,7 +39,7 @@ CLIENT_URL=http://localhost:5173
 4. Copy your API key
 5. Add to `.env` file: `ASSEMBLYAI_API_KEY=your_key_here`
 
-## 🎯 **Expected Results After Setup:**
+## 🎯 Expected Results After Setup
 
 ### **With AssemblyAI API Key:**
 ```
@@ -52,7 +52,7 @@ Audio extracted successfully: video.mp3 (43.92 MB)
 ✅ Transcript completed (language: hi)
 ✅ Summary generated (English)
 Transcript length: 2456 words
-✨ Generating 10 questions using Gemini...
+✨ Generating questions using Gemini...
 ✅ Questions stored in DB
 ```
 

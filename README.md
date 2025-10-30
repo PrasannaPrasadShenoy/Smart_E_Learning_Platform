@@ -6,7 +6,7 @@ An AI-powered adaptive learning platform that sources educational videos from Yo
 
 ### Core Functionality
 - **YouTube Integration**: Search and fetch educational playlists and videos
-- **AI-Powered Question Generation**: Automatically generate questions from video transcripts using OpenAI GPT
+- **AI-Powered Question Generation**: Automatically generate questions from video transcripts using Gemini API (OpenAI removed)
 - **Cognitive Load Tracking**: Real-time webcam-based attention monitoring using MediaPipe
 - **Personalized Feedback**: AI-generated feedback based on performance and cognitive metrics
 - **Adaptive Recommendations**: Suggest new learning content based on weak areas
@@ -36,12 +36,12 @@ An AI-powered adaptive learning platform that sources educational videos from Yo
 - **Node.js** with Express.js
 - **MongoDB** with Mongoose
 - **JWT** for authentication
-- **OpenAI API** for AI features
+- **Gemini API** for AI features (notes, assessments, summaries)
 - **YouTube Data API** for content fetching
 - **youtube-transcript-api** for transcript extraction
 
 ### AI/ML
-- **OpenAI GPT-4** for question generation and feedback
+- **Gemini** for question generation and feedback
 - **MediaPipe FaceMesh** for cognitive load tracking
 - **Custom CLI Algorithm** for cognitive load computation
 
