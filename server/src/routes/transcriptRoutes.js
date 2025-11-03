@@ -5,7 +5,9 @@ const {
   getCachedTranscripts,
   deleteTranscript,
   verifyTranscript,
-  getTranscriptStats
+  getTranscriptStats,
+  transcribeVideo,
+  getTranscriptionStatus
 } = require('../controllers/transcriptController');
 const { authenticateToken } = require('../middlewares/authMiddleware');
 
@@ -49,5 +51,22 @@ router.get('/:videoId/verify', verifyTranscript);
  * @access  Private
  */
 router.get('/stats/overview', getTranscriptStats);
+
+/**
+ * @route   POST /api/transcripts/transcribe
+ * @desc    Transcribe video (sequential or parallel mode)
+ * @access  Private
+ * @body    { videoId: string, mode?: 'sequential' | 'parallel', generateEmbeddings?: boolean }
+ */
+router.post('/transcribe', [
+  body('videoId').notEmpty().withMessage('Video ID is required')
+], transcribeVideo);
+
+/**
+ * @route   GET /api/transcripts/:videoId/status
+ * @desc    Get transcription status (for parallel mode)
+ * @access  Private
+ */
+router.get('/:videoId/status', getTranscriptionStatus);
 
 module.exports = router;

@@ -82,9 +82,9 @@ const NotesPopup: React.FC<NotesPopupProps> = ({ isOpen, onClose, notes, type })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex-shrink-0">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-blue-100 rounded-lg">
               {type === 'short' ? (
@@ -116,7 +116,7 @@ const NotesPopup: React.FC<NotesPopupProps> = ({ isOpen, onClose, notes, type })
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                {currentNotes.split(' ').length} words
+                {currentNotes ? currentNotes.split(' ').length : 0} words
               </span>
             </div>
             <button
@@ -128,8 +128,8 @@ const NotesPopup: React.FC<NotesPopupProps> = ({ isOpen, onClose, notes, type })
           </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+        {/* Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto p-6">
           <div className="prose prose-lg max-w-none">
             <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
               {currentNotes}
@@ -137,8 +137,8 @@ const NotesPopup: React.FC<NotesPopupProps> = ({ isOpen, onClose, notes, type })
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
+        {/* Footer - Always visible at bottom with Copy and Download buttons */}
+        <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center space-x-3">
             <button
               onClick={handleCopy}

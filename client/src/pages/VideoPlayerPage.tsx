@@ -208,7 +208,7 @@ const VideoPlayerPage: React.FC = () => {
       const response = await assessmentApi.post('/assessments/start', {
         courseId: 'temp',
         videoId: videoId,
-        numQuestions: 10
+        numQuestions: 5
       })
       
       const { assessmentId } = response.data.data

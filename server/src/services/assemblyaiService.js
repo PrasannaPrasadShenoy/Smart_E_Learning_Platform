@@ -2,6 +2,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const ffmpeg = require('fluent-ffmpeg');
 const config = require('../config/env');
 const Transcript = require('../models/Transcript');
 
@@ -460,6 +461,244 @@ class AssemblyAIService {
         exists: false,
         error: error.message
       };
+    }
+  }
+
+  /**
+   * Get audio duration in seconds
+   * @param {string} audioPath - Path to audio file
+   * @returns {Promise<number>} Duration in seconds
+   */
+  async getAudioDuration(audioPath) {
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(audioPath, (err, metadata) => {
+        if (err) {
+          console.error('Error getting audio duration:', err);
+          reject(err);
+          return;
+        }
+        const duration = metadata.format.duration || 0;
+        resolve(Math.floor(duration));
+      });
+    });
+  }
+
+  /**
+   * Split audio file into chunks (10-15 minutes each)
+   * @param {string} audioPath - Path to source audio file
+   * @param {number} chunkDurationMinutes - Duration of each chunk in minutes (default: 12)
+   * @returns {Promise<Array>} Array of chunk info: [{ index, path, startTime, endTime }]
+   */
+  async chunkAudio(audioPath, chunkDurationMinutes = 12) {
+    try {
+      console.log(`🎵 Starting audio chunking: ${audioPath}`);
+      
+      // Get audio duration
+      const totalDuration = await this.getAudioDuration(audioPath);
+      const chunkDurationSeconds = chunkDurationMinutes * 60;
+      const chunksDir = path.join(path.dirname(audioPath), 'chunks');
+      
+      // Create chunks directory
+      if (!fs.existsSync(chunksDir)) {
+        fs.mkdirSync(chunksDir, { recursive: true });
+      }
+
+      // Calculate number of chunks needed
+      const numChunks = Math.ceil(totalDuration / chunkDurationSeconds);
+      console.log(`📊 Total duration: ${totalDuration}s, splitting into ${numChunks} chunks of ~${chunkDurationMinutes} minutes each`);
+
+      const chunks = [];
+      const baseName = path.basename(audioPath, path.extname(audioPath));
+
+      // Generate chunks using ffmpeg
+      for (let i = 0; i < numChunks; i++) {
+        const startTime = i * chunkDurationSeconds;
+        const endTime = Math.min((i + 1) * chunkDurationSeconds, totalDuration);
+        const chunkPath = path.join(chunksDir, `${baseName}_chunk_${i}.mp3`);
+
+        await new Promise((resolve, reject) => {
+          ffmpeg(audioPath)
+            .setStartTime(startTime)
+            .setDuration(endTime - startTime)
+            .audioBitrate(64) // Low bitrate for smaller files
+            .audioCodec('libmp3lame')
+            .on('start', (commandLine) => {
+              console.log(`🎬 Creating chunk ${i + 1}/${numChunks}: ${commandLine}`);
+            })
+            .on('end', () => {
+              console.log(`✅ Chunk ${i + 1}/${numChunks} created: ${chunkPath}`);
+              resolve();
+            })
+            .on('error', (err) => {
+              console.error(`❌ Error creating chunk ${i + 1}:`, err.message);
+              reject(err);
+            })
+            .save(chunkPath);
+        });
+
+        chunks.push({
+          chunkIndex: i,
+          path: chunkPath,
+          startTime: startTime,
+          endTime: endTime,
+          duration: endTime - startTime
+        });
+      }
+
+      console.log(`✅ Audio chunking completed: ${chunks.length} chunks created`);
+      return chunks;
+    } catch (error) {
+      console.error('❌ Error chunking audio:', error);
+      throw new Error(`Failed to chunk audio: ${error.message}`);
+    }
+  }
+
+  /**
+   * Upload a single audio chunk to AssemblyAI
+   * @param {string} chunkPath - Path to chunk audio file
+   * @returns {Promise<string>} Upload URL
+   */
+  async uploadChunk(chunkPath) {
+    try {
+      console.log(`📤 Uploading chunk: ${chunkPath}`);
+      
+      const audioBuffer = fs.readFileSync(chunkPath);
+      
+      const response = await axios.post(`${this.baseUrl}/upload`, audioBuffer, {
+        headers: {
+          'Authorization': this.apiKey,
+          'Content-Type': 'application/octet-stream'
+        },
+        timeout: 300000 // 5 minutes timeout for large chunks
+      });
+
+      console.log(`✅ Chunk uploaded successfully: ${path.basename(chunkPath)}`);
+      return response.data.upload_url;
+    } catch (error) {
+      console.error(`❌ Error uploading chunk ${chunkPath}:`, error.response?.data || error.message);
+      throw new Error(`Failed to upload chunk: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create transcription request for a chunk
+   * @param {string} audioUrl - Uploaded chunk audio URL
+   * @param {Object} options - Additional options (chunkIndex, startTime, etc.)
+   * @returns {Promise<string>} Transcript ID for this chunk
+   */
+  async createChunkTranscript(audioUrl, options = {}) {
+    try {
+      console.log(`🎙️ Creating transcription request for chunk ${options.chunkIndex || 'unknown'}...`);
+      
+      const response = await axios.post(`${this.baseUrl}/transcript`, {
+        audio_url: audioUrl,
+        language_detection: true,
+        // Disable expensive features for chunks to save time/cost
+        summarization: false,
+        auto_highlights: false,
+        sentiment_analysis: false
+      }, {
+        headers: {
+          'Authorization': this.apiKey,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log(`✅ Transcription request created for chunk ${options.chunkIndex || 'unknown'}: ${response.data.id}`);
+      return response.data.id;
+    } catch (error) {
+      console.error(`❌ Error creating chunk transcription:`, error.response?.data || error.message);
+      throw new Error(`Failed to create chunk transcription request: ${error.message}`);
+    }
+  }
+
+  /**
+   * Poll for chunk transcription completion
+   * @param {string} transcriptId - Transcript ID for the chunk
+   * @param {number} maxWaitTime - Maximum wait time in milliseconds (default: 10 minutes)
+   * @returns {Promise<Object>} Completed transcript data for the chunk
+   */
+  async pollChunkTranscript(transcriptId, maxWaitTime = 600000) {
+    const pollInterval = 10000; // Poll every 10 seconds
+    const startTime = Date.now();
+    let attempts = 0;
+
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        attempts++;
+        console.log(`🔍 Polling chunk transcript ${transcriptId} (attempt ${attempts})...`);
+        
+        const response = await axios.get(`${this.baseUrl}/transcript/${transcriptId}`, {
+          headers: {
+            'Authorization': this.apiKey
+          }
+        });
+
+        const data = response.data;
+        console.log(`📊 Chunk transcript ${transcriptId} status: ${data.status}`);
+
+        if (data.status === 'completed') {
+          console.log(`✅ Chunk transcription completed: ${transcriptId}`);
+          return {
+            transcriptId: transcriptId,
+            text: data.text || '',
+            language: data.language_code || 'en',
+            confidence: data.confidence || 0,
+            words: data.words || [],
+            completed: true
+          };
+        } else if (data.status === 'error') {
+          throw new Error(`Chunk transcription failed: ${data.error}`);
+        }
+
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      } catch (error) {
+        if (error.response?.status === 404) {
+          throw new Error(`Chunk transcript ${transcriptId} not found`);
+        }
+        console.error(`❌ Error polling chunk transcript:`, error.response?.data || error.message);
+        // Continue polling on transient errors
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+    }
+
+    throw new Error(`Chunk transcription timeout after ${maxWaitTime}ms for transcript ${transcriptId}`);
+  }
+
+  /**
+   * Clean up chunk files
+   * @param {Array} chunks - Array of chunk objects with path property
+   */
+  async cleanupChunks(chunks) {
+    try {
+      console.log(`🧹 Cleaning up ${chunks.length} chunk files...`);
+      for (const chunk of chunks) {
+        try {
+          if (fs.existsSync(chunk.path)) {
+            fs.unlinkSync(chunk.path);
+            console.log(`✅ Deleted chunk file: ${chunk.path}`);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Failed to delete chunk ${chunk.path}:`, error.message);
+        }
+      }
+      // Try to remove chunks directory if empty
+      const chunksDir = path.dirname(chunks[0]?.path);
+      if (chunksDir && fs.existsSync(chunksDir)) {
+        try {
+          const files = fs.readdirSync(chunksDir);
+          if (files.length === 0) {
+            fs.rmdirSync(chunksDir);
+            console.log(`✅ Removed empty chunks directory: ${chunksDir}`);
+          }
+        } catch (error) {
+          // Directory not empty or already removed, ignore
+        }
+      }
+    } catch (error) {
+      console.warn(`⚠️ Error during chunk cleanup:`, error.message);
     }
   }
 

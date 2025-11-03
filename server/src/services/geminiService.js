@@ -87,34 +87,37 @@ Format as structured notes with clear sections. Make it comprehensive and educat
           ? `This transcript is in ${sourceLanguage}. Please translate and create questions in English.`
           : 'This transcript is in English.';
 
-        const prompt = `Generate ${count} questions in English based on this video transcript. ${languageInstruction}
+        const prompt = `Generate exactly ${count} Multiple Choice Questions (MCQ) in English based on this video transcript. ${languageInstruction}
 
 Transcript:
 ${transcript}
 
 Requirements:
+- Create ALL ${count} questions as Multiple Choice Questions (MCQ) ONLY
 - Create all questions in English
 - Difficulty level: ${difficulty}
-- Question distribution: 60% MCQ, 20% descriptive, 15% coding/predict output, 5% general knowledge
-- For coding content: focus on output prediction and query writing
-- Check answers based on expected output, not code style
-- Include a mix of question types appropriate to the content
+- Each question MUST have exactly 4 options (Option A, Option B, Option C, Option D)
+- The correctAnswer should be one of the four options (e.g., "Option A" or the exact text of the correct option)
 - Make questions challenging but fair for ${difficulty} level
 - Translate and understand the content first, then create questions
 - Make each question UNIQUE and different from others
 - Ensure variety in question topics and approaches
+- Cover different aspects of the transcript content
+- All questions must be MCQ type - NO descriptive, coding, or other question types
 
 Format as JSON array with this structure:
 [
   {
     "question": "Question text here in English",
-    "type": "mcq|descriptive|coding|predict-output|general",
-    "options": ["Option A", "Option B", "Option C", "Option D"], // only for MCQ
-    "correctAnswer": "Correct answer or explanation in English",
+    "type": "mcq",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctAnswer": "Option A", // Must match one of the options exactly
     "explanation": "Why this answer is correct in English",
     "difficulty": "${difficulty}"
   }
-]`;
+]
+
+IMPORTANT: Generate exactly ${count} MCQ questions. All questions must be type "mcq".`;
 
         const result = await this.model.generateContent(prompt);
         const response = await result.response;
@@ -129,8 +132,15 @@ Format as JSON array with this structure:
         }
         
         const questions = JSON.parse(jsonText);
-        console.log(`✅ Gemini questions generated successfully (${questions.length} items) on attempt ${attempt}`);
-        return questions;
+        
+        // Ensure all questions have type='mcq' since we only generate MCQs
+        const normalizedQuestions = questions.map(q => ({
+          ...q,
+          type: 'mcq' // Force all to be MCQ
+        }));
+        
+        console.log(`✅ Gemini questions generated successfully (${normalizedQuestions.length} items) on attempt ${attempt}`);
+        return normalizedQuestions;
         
       } catch (error) {
         console.error(`❌ Gemini API error for questions (attempt ${attempt}/${maxRetries}):`, error.message);
@@ -388,6 +398,153 @@ Keep it under 200 words.`;
       console.error('Gemini API error for content generation:', error);
       throw new Error('Failed to generate content');
     }
+  }
+
+  /**
+   * Generate embeddings for transcript text using Gemini embedding model
+   * Note: Uses text-embedding-004 model which is optimized for embeddings
+   * @param {string} text - Text to generate embeddings for
+   * @param {number} maxChunkSize - Maximum characters per chunk (8192 is safe for embedding models)
+   * @returns {Promise<Array<number>>} Embedding vector
+   */
+  async generateEmbeddings(text, maxChunkSize = 8000) {
+    if (!this.genAI) {
+      throw new Error('Gemini API key not configured');
+    }
+
+    try {
+      console.log(`🔢 Generating embeddings for text (length: ${text.length})...`);
+
+      // Use the embedding model (text-embedding-004)
+      const embeddingModel = this.genAI.getGenerativeModel({ 
+        model: 'text-embedding-004' 
+      });
+
+      // If text is too long, chunk it and average embeddings
+      if (text.length > maxChunkSize) {
+        console.log(`⚠️ Text too long (${text.length} chars), chunking and averaging embeddings...`);
+        const chunks = this.chunkText(text, maxChunkSize);
+        const chunkEmbeddings = [];
+
+        for (let i = 0; i < chunks.length; i++) {
+          console.log(`📊 Processing chunk ${i + 1}/${chunks.length}...`);
+          const result = await embeddingModel.embedContent(chunks[i]);
+          const embedding = result.embedding;
+          chunkEmbeddings.push(embedding.values || embedding);
+        }
+
+        // Average the embeddings
+        const averagedEmbedding = this.averageEmbeddings(chunkEmbeddings);
+        console.log(`✅ Generated embeddings (averaged from ${chunks.length} chunks): ${averagedEmbedding.length} dimensions`);
+        return averagedEmbedding;
+      }
+
+      // Generate embedding for the full text
+      const result = await embeddingModel.embedContent(text);
+      const embedding = result.embedding.values || result.embedding;
+      
+      console.log(`✅ Generated embeddings: ${embedding.length} dimensions`);
+      return embedding;
+
+    } catch (error) {
+      console.error('❌ Gemini embeddings generation error:', error);
+      
+      // If embedding model not available, try using the main model as fallback
+      if (error.message?.includes('embedding') || error.message?.includes('not found')) {
+        console.warn('⚠️ Embedding model not available, using semantic approximation fallback');
+        return this.generateFallbackEmbeddings(text);
+      }
+      
+      throw new Error(`Failed to generate embeddings: ${error.message}`);
+    }
+  }
+
+  /**
+   * Chunk text into smaller pieces for embedding generation
+   * @param {string} text - Text to chunk
+   * @param {number} chunkSize - Maximum size of each chunk
+   * @returns {Array<string>} Array of text chunks
+   */
+  chunkText(text, chunkSize) {
+    const chunks = [];
+    let currentChunk = '';
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+
+    for (const sentence of sentences) {
+      if ((currentChunk + sentence).length <= chunkSize) {
+        currentChunk += sentence;
+      } else {
+        if (currentChunk) {
+          chunks.push(currentChunk.trim());
+        }
+        currentChunk = sentence;
+      }
+    }
+
+    if (currentChunk) {
+      chunks.push(currentChunk.trim());
+    }
+
+    return chunks.length > 0 ? chunks : [text];
+  }
+
+  /**
+   * Average multiple embeddings
+   * @param {Array<Array<number>>} embeddings - Array of embedding vectors
+   * @returns {Array<number>} Averaged embedding vector
+   */
+  averageEmbeddings(embeddings) {
+    if (embeddings.length === 0) return [];
+    if (embeddings.length === 1) return embeddings[0];
+
+    const dimension = embeddings[0].length;
+    const averaged = new Array(dimension).fill(0);
+
+    for (const embedding of embeddings) {
+      for (let i = 0; i < dimension; i++) {
+        averaged[i] += embedding[i];
+      }
+    }
+
+    for (let i = 0; i < dimension; i++) {
+      averaged[i] /= embeddings.length;
+    }
+
+    return averaged;
+  }
+
+  /**
+   * Generate fallback embeddings when embedding model is not available
+   * Uses a simple hash-based approach as a placeholder
+   * @param {string} text - Text to generate embeddings for
+   * @returns {Array<number>} Fallback embedding vector (768 dimensions)
+   */
+  generateFallbackEmbeddings(text) {
+    console.warn('⚠️ Using fallback embedding generation (not semantic)');
+    
+    // Create a simple hash-based embedding as fallback
+    // This is not semantic but maintains the structure
+    const dimension = 768;
+    const embedding = new Array(dimension).fill(0);
+    const words = text.toLowerCase().split(/\s+/);
+
+    words.forEach((word, idx) => {
+      for (let i = 0; i < word.length; i++) {
+        const charCode = word.charCodeAt(i);
+        const position = (charCode + idx) % dimension;
+        embedding[position] += 0.1;
+      }
+    });
+
+    // Normalize
+    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
+    if (magnitude > 0) {
+      for (let i = 0; i < dimension; i++) {
+        embedding[i] /= magnitude;
+      }
+    }
+
+    return embedding;
   }
 }
 

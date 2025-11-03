@@ -51,6 +51,11 @@ const questionSchema = new mongoose.Schema({
       enum: ['gemini', 'template', 'manual', 'fallback'],
       default: 'gemini'
     },
+    type: {
+      type: String,
+      enum: ['mcq', 'descriptive', 'coding', 'predict-output', 'general'],
+      default: 'mcq'
+    },
     confidence: {
       type: Number,
       min: 0,
@@ -74,6 +79,7 @@ const questionSchema = new mongoose.Schema({
 questionSchema.index({ courseId: 1, videoId: 1 });
 questionSchema.index({ isActive: 1, difficulty: 1 });
 questionSchema.index({ topic: 1 });
+questionSchema.index({ 'metadata.type': 1 }); // Index for filtering by question type
 
 // Calculate success rate
 questionSchema.virtual('successRate').get(function() {

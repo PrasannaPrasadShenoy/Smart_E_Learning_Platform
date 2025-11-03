@@ -1,0 +1,43 @@
+========================================
+INSTALL REDIS IN WSL - MANUAL STEPS
+========================================
+
+Run these commands in Windows Command Prompt or PowerShell:
+
+1. Update packages:
+   wsl sudo apt update
+
+2. Install Redis:
+   wsl sudo apt install -y redis-server
+
+3. Start Redis:
+   wsl sudo service redis-server start
+
+4. Enable Redis to start automatically:
+   wsl sudo systemctl enable redis-server
+
+5. Test Redis (should return "PONG"):
+   wsl redis-cli ping
+
+========================================
+AFTER INSTALLATION
+========================================
+
+To START Redis:
+   wsl sudo service redis-server start
+
+To STOP Redis:
+   wsl sudo service redis-server stop
+
+To CHECK Redis status:
+   wsl sudo service redis-server status
+
+========================================
+THEN START YOUR SERVER
+========================================
+
+cd Smart_E_Learning_Platform/server
+npm start
+
+Redis will be available at: localhost:6379
+

@@ -26,6 +26,18 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
+// Initialize transcription worker for parallel chunk processing
+// Worker runs in background and processes transcription jobs from queue
+if (process.env.NODE_ENV !== 'test') {
+  try {
+    require('./workers/transcriptionWorker');
+    console.log('✅ Transcription worker initialized');
+  } catch (error) {
+    console.error('⚠️ Failed to initialize transcription worker:', error.message);
+    console.log('⚠️ Running without parallel transcription (sequential mode only)');
+  }
+}
+
 // Security middleware
 app.use(helmet({
   crossOriginEmbedderPolicy: false,

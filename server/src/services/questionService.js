@@ -4,34 +4,51 @@ const Question = require('../models/Question');
 // Generate questions for a specific video
 const generateVideoQuestions = async (transcript, videoId, courseId, difficulty = 'intermediate', sourceLanguage = 'en') => {
   try {
-    console.log(`Generating ${difficulty} questions for video: ${videoId} (language: ${sourceLanguage})`);
+    console.log(`Generating ${difficulty} MCQ questions for video: ${videoId} (language: ${sourceLanguage})`);
     
     const questions = await geminiService.generateQuestions(transcript, difficulty, 5, sourceLanguage);
     
     // Save questions to database
-    const savedQuestions = await Promise.all(
-      questions.map(async (q) => {
+    const savedQuestions = [];
+    for (const q of questions) {
+      try {
         const question = new Question({
-        courseId,
-        videoId,
+          courseId,
+          videoId,
           question: q.question,
           options: q.options || [],
           correctAnswer: q.correctAnswer,
           explanation: q.explanation || '',
           difficulty: q.difficulty || difficulty,
           topic: extractTopic(transcript),
+          isActive: true, // Explicitly set isActive
           metadata: {
             generatedBy: 'gemini',
             confidence: 0.9,
-            type: q.type
+            type: (q.type && q.type.toLowerCase() === 'mcq') ? 'mcq' : 'mcq', // Force MCQ type
+            attempts: 0,
+            correctAttempts: 0
           }
         });
         
-        return await question.save();
-      })
-    );
+        const saved = await question.save();
+        savedQuestions.push(saved);
+        
+        // Debug: Verify metadata was saved correctly
+        const savedObj = saved.toObject ? saved.toObject() : saved;
+        console.log(`✅ Saved question ${savedQuestions.length}/${questions.length}: ${saved._id}, metadata.type=${savedObj.metadata?.type || 'NOT SET'}`);
+      } catch (saveError) {
+        console.error(`❌ Error saving question:`, saveError.message);
+        // Continue with other questions even if one fails
+      }
+    }
     
-    console.log(`Generated ${savedQuestions.length} questions successfully`);
+    console.log(`✅ Generated and saved ${savedQuestions.length}/${questions.length} questions successfully`);
+    
+    if (savedQuestions.length === 0) {
+      throw new Error('Failed to save any questions to database');
+    }
+    
     return savedQuestions;
   } catch (error) {
     console.error('Error generating video questions:', error);
@@ -94,9 +111,9 @@ const extractTopic = (transcript) => {
   return foundTopic || 'General';
 };
 
-// Fallback video questions when Gemini API fails
+// Fallback video questions when Gemini API fails - ALL MCQ only
 const generateFallbackVideoQuestions = async (transcript, videoId, courseId, difficulty) => {
-  console.log('Using fallback for video questions');
+  console.log('Using fallback for video questions (MCQ only)');
   
   // Handle invalid courseId
   const validCourseId = courseId && courseId !== 'temp' ? courseId : `playlist_${videoId}`;
@@ -105,7 +122,7 @@ const generateFallbackVideoQuestions = async (transcript, videoId, courseId, dif
   const transcriptWords = transcript ? transcript.split(' ').slice(0, 20).join(' ') : '';
   const hasContent = transcriptWords.length > 10;
   
-  // Create more video-specific fallback questions
+  // Create more video-specific fallback questions - ALL MCQ only
   const fallbackQuestions = [
     {
       question: hasContent ? `Based on the video content about "${transcriptWords}", what is the main topic being discussed?` : 'What is the main topic covered in this video?',
@@ -129,40 +146,54 @@ const generateFallbackVideoQuestions = async (transcript, videoId, courseId, dif
       type: 'mcq'
     },
     {
-      question: hasContent ? `Explain the key learning objectives of this video about "${transcriptWords}".` : 'Explain the key learning objectives of this video content.',
-      correctAnswer: hasContent ? `The video about "${transcriptWords}" aims to provide educational content that enhances understanding of the topic through clear explanations and practical examples.` : 'The video aims to provide educational content that enhances understanding of the topic through clear explanations and practical examples.',
-      explanation: 'Learning objectives focus on knowledge acquisition and skill development.',
-      type: 'descriptive'
+      question: hasContent ? `What is the best way to understand the content from "${transcriptWords}"?` : 'What is the best way to understand the video content?',
+      options: ['Watching once', 'Taking notes while watching', 'Skipping sections', 'Only reading subtitles'],
+      correctAnswer: 'Taking notes while watching',
+      explanation: 'Active engagement through note-taking helps improve comprehension and retention.',
+      type: 'mcq'
     },
     {
-      question: hasContent ? `How would you apply the knowledge from this video about "${transcriptWords}" in a real-world scenario?` : 'How would you apply the knowledge from this video in a real-world scenario?',
-      correctAnswer: hasContent ? `Apply the knowledge from "${transcriptWords}" by identifying relevant situations, practicing with examples, and gradually building confidence through hands-on experience.` : 'Apply the knowledge by identifying relevant situations, practicing with examples, and gradually building confidence through hands-on experience.',
-      explanation: 'Real-world application involves recognizing opportunities and practicing in authentic contexts.',
-      type: 'descriptive'
+      question: hasContent ? `Which skill is most important when learning from this video about "${transcriptWords}"?` : 'Which skill is most important when learning from educational videos?',
+      options: ['Fast reading', 'Critical thinking', 'Memorization', 'Multi-tasking'],
+      correctAnswer: 'Critical thinking',
+      explanation: 'Critical thinking enables deeper understanding and practical application of the content.',
+      type: 'mcq'
     }
   ];
   
-  const questions = fallbackQuestions.map((q, index) => {
-    const question = new Question({
-      courseId: validCourseId,
-      videoId,
-      question: q.question,
-      options: q.options || [],
-      correctAnswer: q.correctAnswer,
-      explanation: q.explanation,
-      difficulty,
-      topic: extractTopic(transcript),
-      metadata: {
-        generatedBy: 'fallback',
-        confidence: 0.5,
-        type: q.type
-      }
-    });
-    
-    return question.save();
-  });
+  const savedFallbackQuestions = [];
+  for (const q of fallbackQuestions) {
+    try {
+      const question = new Question({
+        courseId: validCourseId,
+        videoId,
+        question: q.question,
+        options: q.options || [],
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation,
+        difficulty,
+        topic: extractTopic(transcript),
+        isActive: true, // Explicitly set isActive
+        metadata: {
+          generatedBy: 'fallback',
+          confidence: 0.5,
+          type: q.type || 'mcq', // Ensure type is set
+          attempts: 0,
+          correctAttempts: 0
+        }
+      });
+      
+      const saved = await question.save();
+      savedFallbackQuestions.push(saved);
+      console.log(`✅ Saved fallback question ${savedFallbackQuestions.length}/${fallbackQuestions.length}: ${saved._id}`);
+    } catch (saveError) {
+      console.error(`❌ Error saving fallback question:`, saveError.message);
+      // Continue with other questions even if one fails
+    }
+  }
   
-  return await Promise.all(questions);
+  console.log(`✅ Generated and saved ${savedFallbackQuestions.length}/${fallbackQuestions.length} fallback questions`);
+  return savedFallbackQuestions;
 };
 
 // Fallback course test when Gemini API fails
@@ -253,14 +284,35 @@ const updateQuestionStats = async (questionId, isCorrect) => {
 // Get questions for assessment (compatibility method)
 const getQuestionsForAssessment = async (courseId, videoId, numQuestions = 5, difficulty = 'intermediate') => {
   try {
-    console.log(`Getting ${numQuestions} questions for assessment: ${videoId}`);
+    console.log(`Getting ${numQuestions} MCQ questions for assessment: ${videoId}`);
     
-    // Get existing questions from database first
+    // Get existing MCQ questions from database first (only MCQ type)
     let questions = await Question.find({
       videoId,
       difficulty,
-      isActive: true
-    }).limit(numQuestions);
+      isActive: { $ne: false } // Match true or undefined (default)
+    }).limit(numQuestions * 3); // Get extra to ensure we have enough MCQs
+    
+    console.log(`📊 Found ${questions.length} total questions in database for videoId: ${videoId}, difficulty: ${difficulty}`);
+    
+    // Filter to ensure all are MCQs and have options
+    questions = questions.filter(q => {
+      // Convert Mongoose document to plain object if needed
+      const qObj = q.toObject ? q.toObject() : q;
+      const metadataType = qObj.metadata?.type || qObj.type;
+      const hasOptions = qObj.options && Array.isArray(qObj.options) && qObj.options.length >= 4;
+      
+      // If type is explicitly set to non-MCQ, filter it out
+      // Otherwise, if it has 4+ options, treat it as MCQ (for backward compatibility)
+      const isMcq = (metadataType === 'mcq' || !metadataType) && hasOptions;
+      
+      if (!isMcq && questions.length > 0) {
+        console.log(`⚠️ Filtered out non-MCQ: videoId=${qObj.videoId}, metadataType=${metadataType || 'undefined (assuming MCQ if has options)'}, type=${qObj.type || 'none'}, options=${qObj.options?.length || 0}`);
+      }
+      return isMcq;
+    }).slice(0, numQuestions);
+    
+    console.log(`📊 Filtered to ${questions.length} valid MCQ questions`);
 
     // If not enough questions in database, generate new ones
     if (questions.length < numQuestions) {
@@ -282,7 +334,48 @@ const getQuestionsForAssessment = async (courseId, videoId, numQuestions = 5, di
         try {
           const newQuestions = await generateVideoQuestions(transcriptData.transcript, videoId, courseId, difficulty, transcriptData.language);
           console.log(`Generated ${newQuestions.length} new questions from transcript`);
-          questions = newQuestions.slice(0, numQuestions);
+          
+          // Debug: Log the structure of saved questions
+          if (newQuestions.length > 0) {
+            console.log(`🔍 Debug - First saved question structure:`, {
+              hasMetadata: !!newQuestions[0].metadata,
+              metadataType: newQuestions[0].metadata?.type,
+              directType: newQuestions[0].type,
+              hasOptions: !!newQuestions[0].options,
+              optionsLength: newQuestions[0].options?.length,
+              questionId: newQuestions[0]._id
+            });
+          }
+          
+          // Re-query database immediately to get all questions including newly saved ones
+          // This ensures we get the properly structured Mongoose documents
+          const allQuestions = await Question.find({
+            videoId,
+            difficulty,
+            isActive: { $ne: false }
+          }).limit(numQuestions * 3);
+          
+          console.log(`📊 Re-queried ${allQuestions.length} questions from database`);
+          
+          // Filter to only MCQs with options
+          const validMcqs = allQuestions.filter(q => {
+            // Convert Mongoose document to plain object if needed
+            const qObj = q.toObject ? q.toObject() : q;
+            const metadataType = qObj.metadata?.type || qObj.type;
+            const hasOptions = qObj.options && Array.isArray(qObj.options) && qObj.options.length >= 4;
+            
+            // If type is explicitly set to non-MCQ, filter it out
+            // Otherwise, if it has 4+ options, treat it as MCQ (for backward compatibility)
+            const isMcq = (metadataType === 'mcq' || !metadataType) && hasOptions;
+            
+            if (!isMcq) {
+              console.warn(`⚠️ Filtered out non-MCQ question: id=${qObj._id}, metadataType=${metadataType || 'undefined'}, type=${qObj.type || 'undefined'}, options=${qObj.options?.length || 0}`);
+            }
+            return isMcq;
+          });
+          
+          questions = validMcqs.slice(0, numQuestions);
+          console.log(`✅ Retrieved ${questions.length} MCQ questions from database after generation`);
     } catch (error) {
           console.error('Error generating questions from transcript:', error);
           console.log('Falling back to fallback questions due to generation error');
@@ -319,7 +412,7 @@ const generateFallbackQuestions = (transcript, difficulty = 'intermediate') => {
     return new mongoose.Types.ObjectId(baseId + (10 + index).toString());
   };
   
-  // Create diverse fallback questions
+  // Create diverse fallback questions - ALL MCQ only
   const fallbackQuestions = [
     {
       _id: generateUniqueId(1),
@@ -356,23 +449,25 @@ const generateFallbackQuestions = (transcript, difficulty = 'intermediate') => {
     },
     {
       _id: generateUniqueId(4),
-      question: 'Explain the importance of understanding the fundamental concepts presented in this video.',
-      type: 'descriptive',
-      correctAnswer: 'Understanding fundamental concepts is crucial as they form the foundation for advanced learning, enable problem-solving in various contexts, and help in building expertise in the subject area.',
-      explanation: 'Fundamental concepts provide the building blocks for more complex knowledge and practical applications.',
+      question: 'What is the best way to reinforce learning from this video?',
+      type: 'mcq',
+      options: ['Watching the video again', 'Taking notes and practicing', 'Skipping to next video', 'Only reading the transcript'],
+      correctAnswer: 'Taking notes and practicing',
+      explanation: 'Active learning through note-taking and practice helps reinforce understanding and improve retention.',
       difficulty: difficulty,
-      topic: 'Conceptual Understanding',
-      metadata: { type: 'descriptive', generatedBy: 'fallback' }
+      topic: 'Learning Reinforcement',
+      metadata: { type: 'mcq', generatedBy: 'fallback' }
     },
     {
       _id: generateUniqueId(5),
-      question: 'How would you apply the knowledge gained from this video in a real-world scenario?',
-      type: 'descriptive',
-      correctAnswer: 'The knowledge can be applied by identifying relevant situations where these concepts are useful, practicing with real examples, and gradually building confidence through hands-on experience.',
-      explanation: 'Real-world application involves recognizing opportunities to use the knowledge and practicing in authentic contexts.',
+      question: 'Which skill is most important when learning from educational videos?',
+      type: 'mcq',
+      options: ['Memorization', 'Critical thinking', 'Speed watching', 'Multi-tasking'],
+      correctAnswer: 'Critical thinking',
+      explanation: 'Critical thinking allows you to understand, analyze, and apply the concepts presented in the video effectively.',
       difficulty: difficulty,
-      topic: 'Practical Application',
-      metadata: { type: 'descriptive', generatedBy: 'fallback' }
+      topic: 'Learning Skills',
+      metadata: { type: 'mcq', generatedBy: 'fallback' }
     }
   ];
 

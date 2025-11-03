@@ -171,7 +171,7 @@ const PlaylistPage: React.FC = () => {
       const response = await api.post('/assessments/start', {
         courseId: course.id,
         videoId: selectedVideo?.videoId || course.videos[0]?.videoId,
-        numQuestions: 10
+        numQuestions: 5
       })
       
       const { assessmentId } = response.data.data

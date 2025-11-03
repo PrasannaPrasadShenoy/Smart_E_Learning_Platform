@@ -19,7 +19,7 @@ const startAssessment = asyncHandler(async (req, res) => {
     });
   }
 
-  const { courseId, videoId, numQuestions = 10, difficulty } = req.body;
+  const { courseId, videoId, numQuestions = 5, difficulty } = req.body;
   const userId = req.user._id;
 
   // Get questions for the assessment
@@ -341,7 +341,7 @@ const getAssessmentData = asyncHandler(async (req, res) => {
   const questions = await questionService.getQuestionsForAssessment(
     assessment.courseId,
     assessment.videoId,
-    10, // Default number of questions
+    5, // Default number of questions
     'intermediate'
   );
 
