@@ -40,6 +40,27 @@ const userSchema = new mongoose.Schema({
       enum: ['beginner', 'intermediate', 'advanced'],
       default: 'beginner'
     }
+  },
+  integrations: {
+    notion: {
+      accessToken: String,
+      workspace: {
+        name: String,
+        databaseId: String
+      },
+      connectedAt: Date
+    },
+    googledocs: {
+      accessToken: String,
+      refreshToken: String,
+      expiresAt: Date,
+      connectedAt: Date
+    },
+    moodle: {
+      baseUrl: String,
+      token: String,
+      connectedAt: Date
+    }
   }
 }, {
   timestamps: true

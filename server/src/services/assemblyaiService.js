@@ -44,24 +44,84 @@ class AssemblyAIService {
         'python3 -m yt_dlp' // Python3 module
       ];
 
-      // Set ffmpeg location for Windows
-      const ffmpegPath = 'C:\\ffmpeg\\ffmpeg-8.0-essentials_build\\bin';
+      // Auto-detect FFmpeg or use audio-only formats
+      let ffmpegPath = null;
+      
+      // Try to find FFmpeg in PATH first
+      try {
+        const { execSync } = require('child_process');
+        if (process.platform === 'win32') {
+          try {
+            const ffmpegLocation = execSync('where.exe ffmpeg', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split('\n')[0];
+            if (ffmpegLocation && fs.existsSync(ffmpegLocation)) {
+              ffmpegPath = path.dirname(ffmpegLocation);
+              console.log(`✅ Found ffmpeg in PATH: ${ffmpegPath}`);
+            }
+          } catch (e) {
+            // FFmpeg not in PATH, try common locations
+          }
+        }
+      } catch (e) {
+        // Continue to try hardcoded paths
+      }
+      
+      // If not found in PATH, try common installation locations
+      if (!ffmpegPath) {
+        const possiblePaths = [
+          'C:\\ffmpeg\\ffmpeg-8.0-essentials_build\\bin',
+          'C:\\Program Files\\ffmpeg\\bin',
+          'C:\\ffmpeg\\bin',
+          path.join(process.env.LOCALAPPDATA || '', 'Microsoft\\WinGet\\Packages', 'yt-dlp.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe', 'ffmpeg-N-121583-g4348bde2d2-win64-gpl', 'bin')
+        ];
+        
+        for (const testPath of possiblePaths) {
+          if (testPath && fs.existsSync(testPath)) {
+            const ffmpegExe = path.join(testPath, 'ffmpeg.exe');
+            if (fs.existsSync(ffmpegExe)) {
+              ffmpegPath = testPath;
+              console.log(`✅ Found ffmpeg at: ${ffmpegPath}`);
+              break;
+            }
+          }
+        }
+      }
+      
+      // If FFmpeg not found, we'll download audio-only formats that don't need conversion
+      if (!ffmpegPath) {
+        console.warn('⚠️  FFmpeg not found. Will download audio-only format without conversion.');
+      }
 
       let ytdlpProcess = null;
       let commandUsed = '';
+      const baseOutputPath = path.join(tempDir, `${videoId}`);
 
       // Try each command until one works
       for (const cmd of ytdlpCommands) {
         try {
           const [command, ...args] = cmd.split(' ');
-          const fullArgs = [
-            ...args,
-            '--extract-audio',
-            '--audio-format', 'mp3',
-            '--ffmpeg-location', ffmpegPath,
-            '--output', audioPath,
-            youtubeUrl
-          ];
+          let fullArgs = [];
+          
+          if (ffmpegPath && fs.existsSync(ffmpegPath)) {
+            // If FFmpeg is available, extract audio and convert to MP3
+            fullArgs = [
+              ...args,
+              '--extract-audio',
+              '--audio-format', 'mp3',
+              '--ffmpeg-location', ffmpegPath,
+              '--output', audioPath,
+              youtubeUrl
+            ];
+          } else {
+            // If no FFmpeg, download audio-only format directly (webm, m4a, opus, etc.)
+            // These formats don't need conversion and AssemblyAI can accept them
+            console.log('⚠️  No ffmpeg found, downloading audio-only format without conversion');
+            fullArgs = [
+              ...args,
+              '--format', 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio[ext=opus]/bestaudio',
+              '--output', `${baseOutputPath}.%(ext)s`,
+              youtubeUrl
+            ];
+          }
 
           console.log(`Trying command: ${command} ${fullArgs.join(' ')}`);
           
@@ -79,21 +139,66 @@ class AssemblyAIService {
         return;
       }
 
+      let stderrOutput = '';
+      let stdoutOutput = '';
+
       ytdlpProcess.stdout.on('data', (data) => {
-        console.log(`yt-dlp stdout: ${data}`);
+        const output = data.toString();
+        stdoutOutput += output;
+        console.log(`yt-dlp stdout: ${output}`);
       });
 
       ytdlpProcess.stderr.on('data', (data) => {
-        console.log(`yt-dlp stderr: ${data}`);
+        const output = data.toString();
+        stderrOutput += output;
+        console.error(`yt-dlp stderr: ${output}`);
       });
 
       ytdlpProcess.on('close', (code) => {
-        if (code === 0 && fs.existsSync(audioPath)) {
-          console.log(`Audio extracted successfully using ${commandUsed}: ${audioPath}`);
-          resolve(audioPath);
+        // Check for output file - it might be .mp3 or .webm/.m4a/.opus depending on format
+        const possibleExtensions = ['.mp3', '.webm', '.m4a', '.opus', '.ogg'];
+        let foundAudioPath = null;
+        
+        // First check if the expected MP3 file exists
+        if (fs.existsSync(audioPath)) {
+          foundAudioPath = audioPath;
+        } else {
+          // If MP3 doesn't exist, check for other audio formats (when downloaded without conversion)
+          for (const ext of possibleExtensions.slice(1)) { // Skip .mp3, already checked
+            const testPath = baseOutputPath + ext;
+            if (fs.existsSync(testPath)) {
+              foundAudioPath = testPath;
+              console.log(`📁 Found audio file in ${ext} format: ${foundAudioPath}`);
+              break;
+            }
+          }
+        }
+        
+        if (code === 0 && foundAudioPath) {
+          console.log(`✅ Audio file ready: ${foundAudioPath} (${path.extname(foundAudioPath)})`);
+          resolve(foundAudioPath);
+        } else if (foundAudioPath) {
+          // File was downloaded but process exited with error (likely conversion failed)
+          // Use the downloaded file anyway - AssemblyAI can handle webm/m4a/opus
+          console.log(`⚠️  yt-dlp exited with code ${code}, but audio file was downloaded. Using: ${foundAudioPath}`);
+          resolve(foundAudioPath);
         } else {
           console.error(`yt-dlp process exited with code ${code} using command: ${commandUsed}`);
-          reject(new Error(`Failed to extract audio from YouTube video using ${commandUsed}`));
+          
+          // Provide more detailed error message
+          let errorMessage = `Failed to extract audio from YouTube video. `;
+          if (stderrOutput.includes('NoneType')) {
+            errorMessage += `The video may be unavailable, private, or have restricted access. `;
+          } else if (stderrOutput.includes('Private video')) {
+            errorMessage += `This video is private and cannot be accessed. `;
+          } else if (stderrOutput.includes('Video unavailable')) {
+            errorMessage += `This video is unavailable or has been removed. `;
+          } else if (stderrOutput.includes('Sign in to confirm your age')) {
+            errorMessage += `This video requires age verification and cannot be accessed. `;
+          }
+          errorMessage += `Error details: ${stderrOutput.trim() || 'Unknown error'}`;
+          
+          reject(new Error(errorMessage));
         }
       });
 
@@ -327,30 +432,37 @@ class AssemblyAIService {
       // Fallback to YouTube transcript API
       const transcriptData = await this.getYouTubeTranscriptFallback(videoId);
 
-      // Save/update cache from fallback as well
-      try {
-        const savedTranscript = await Transcript.findOneAndUpdate(
-          { videoId },
-          {
-            videoId,
-            transcript: transcriptData.transcript,
-            language: transcriptData.language,
-            wordCount: transcriptData.wordCount,
-            duration: transcriptData.duration,
-            source: transcriptData.source || 'youtube_fallback',
-            'metadata.lastUsedAt': new Date()
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-        console.log('🗄️ Transcript (fallback) cached in database:', {
-          videoId: savedTranscript.videoId,
-          transcriptLength: savedTranscript.transcript.length,
-          wordCount: savedTranscript.wordCount,
-          language: savedTranscript.language,
-          source: savedTranscript.source
-        });
-      } catch (saveErr) {
-        console.warn('⚠️ Failed to cache fallback transcript:', saveErr.message);
+      // Validate transcript before caching (only cache valid transcripts)
+      if (transcriptData && transcriptData.transcript && 
+          transcriptData.transcript.trim().length >= 50 && 
+          transcriptData.wordCount >= 10) {
+        // Save/update cache from fallback (only if valid)
+        try {
+          const savedTranscript = await Transcript.findOneAndUpdate(
+            { videoId },
+            {
+              videoId,
+              transcript: transcriptData.transcript,
+              language: transcriptData.language,
+              wordCount: transcriptData.wordCount,
+              duration: transcriptData.duration,
+              source: transcriptData.source || 'youtube_fallback',
+              'metadata.lastUsedAt': new Date()
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
+          console.log('🗄️ Transcript (fallback) cached in database:', {
+            videoId: savedTranscript.videoId,
+            transcriptLength: savedTranscript.transcript.length,
+            wordCount: savedTranscript.wordCount,
+            language: savedTranscript.language,
+            source: savedTranscript.source
+          });
+        } catch (saveErr) {
+          console.warn('⚠️ Failed to cache fallback transcript:', saveErr.message);
+        }
+      } else {
+        console.warn('⚠️ Skipping cache for invalid fallback transcript');
       }
 
       return transcriptData;
@@ -368,6 +480,11 @@ class AssemblyAIService {
       const { YoutubeTranscript } = require('youtube-transcript');
       
       const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+      
+      if (!transcript || transcript.length === 0) {
+        throw new Error('YouTube transcript API returned empty transcript array. This video may not have captions available.');
+      }
+      
       const fullTranscript = transcript
         .map(segment => segment.text)
         .join(' ')
@@ -385,18 +502,14 @@ class AssemblyAIService {
         transcriptLength: fullTranscript.length
       });
 
-      // If transcript is too short, still return it but mark as insufficient
-      if (wordCount < 10 || fullTranscript.length < 50) {
-        console.log('YouTube transcript too short, but returning it anyway');
-        return {
-          transcript: fullTranscript,
-          language: detectedLanguage,
+      // Validate transcript has meaningful content
+      if (!fullTranscript || fullTranscript.length < 50 || wordCount < 10) {
+        console.error('❌ YouTube transcript too short or empty:', {
+          transcriptLength: fullTranscript.length,
           wordCount: wordCount,
-          duration: fullTranscript.length,
-          hasTranscript: true,
-          summary: '',
-          source: 'youtube_fallback_short'
-        };
+          preview: fullTranscript.substring(0, 50)
+        });
+        throw new Error(`YouTube transcript is too short (${wordCount} words, ${fullTranscript.length} chars). This video may not have captions available.`);
       }
 
       return {

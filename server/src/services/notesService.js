@@ -26,8 +26,17 @@ class NotesService {
       console.log('🎬 Step 1: Getting video transcript...');
       const transcriptData = await assemblyaiService.getTranscriptWithFallback(videoId);
       
-      if (!transcriptData || !transcriptData.transcript) {
-        throw new Error('No transcript available for this video');
+      // Validate transcript exists and has meaningful content
+      if (!transcriptData || !transcriptData.transcript || 
+          transcriptData.transcript.trim().length < 50 || 
+          transcriptData.wordCount < 10) {
+        const errorMsg = `No valid transcript available for this video. ` +
+          `This could be because:\n` +
+          `1. yt-dlp is not installed (required for AssemblyAI transcription)\n` +
+          `2. This video doesn't have captions/subtitles available\n` +
+          `3. Transcript is too short (${transcriptData?.wordCount || 0} words, ${transcriptData?.transcript?.length || 0} chars)\n\n` +
+          `To fix: Install yt-dlp or ensure the video has captions enabled on YouTube.`;
+        throw new Error(errorMsg);
       }
 
       console.log(`✅ Transcript obtained: ${transcriptData.wordCount} words`);

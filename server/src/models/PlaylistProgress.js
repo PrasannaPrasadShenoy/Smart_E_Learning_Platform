@@ -25,6 +25,10 @@ const videoProgressSchema = new mongoose.Schema({
     type: Number, // in seconds
     default: 0
   },
+  lastPosition: {
+    type: Number, // Last watched position in seconds
+    default: 0
+  },
   completionPercentage: {
     type: Number,
     min: 0,
@@ -138,6 +142,10 @@ const playlistProgressSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  lastSyncedAt: {
+    type: Date,
+    default: Date.now
+  },
   isCompleted: {
     type: Boolean,
     default: false
@@ -221,7 +229,13 @@ playlistProgressSchema.methods.updateVideoProgress = function(videoId, progressD
     if (progressData.completionPercentage !== undefined) {
       video.completionPercentage = progressData.completionPercentage;
     }
+    if (progressData.lastPosition !== undefined) {
+      video.lastPosition = progressData.lastPosition;
+    }
   }
+  
+  // Update last synced timestamp
+  this.lastSyncedAt = new Date();
   
   // Recalculate overall progress
   this.calculateOverallProgress();

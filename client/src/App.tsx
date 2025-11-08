@@ -13,6 +13,8 @@ import AssessmentPage from './pages/AssessmentPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
 import CompletedPage from './pages/CompletedPage'
+import IntegrationsPage from './pages/IntegrationsPage'
+import GoogleDocsCallbackPage from './pages/GoogleDocsCallbackPage'
 
 // Components
 import Navbar from './components/Navbar'
@@ -98,6 +100,14 @@ function App() {
             <Route 
               path="/profile/completed" 
               element={user ? <CompletedPage /> : <Navigate to="/login" replace />} 
+            />
+            <Route 
+              path="/integrations" 
+              element={user ? <IntegrationsPage /> : <Navigate to="/login" replace />} 
+            />
+            <Route 
+              path="/integrations/googledocs/callback" 
+              element={<GoogleDocsCallbackPage />} 
             />
             
             {/* Catch all route */}

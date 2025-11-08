@@ -123,6 +123,27 @@ const assessmentSchema = new mongoose.Schema({
       totalFocusTime: Number,
       distractions: Number
     }
+  },
+  proctoring: {
+    integrityScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 100
+    },
+    flags: [{
+      type: String
+    }],
+    metrics: {
+      offScreenTime: Number, // Total seconds off-screen
+      noFaceFrames: Number, // Number of frames without face detected
+      gazeDeviation: Number, // Average gaze deviation from center
+      avgKeyDelay: Number, // Average delay between keystrokes (ms)
+      pasteEvents: Number, // Number of paste events detected
+      backspaceRate: Number, // Backspace key presses per minute
+      tabSwitches: Number, // Number of tab/window switches
+      copyEvents: Number // Number of copy events detected
+    }
   }
 }, {
   timestamps: true

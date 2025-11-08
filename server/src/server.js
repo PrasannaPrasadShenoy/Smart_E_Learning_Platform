@@ -19,6 +19,9 @@ const notesRoutes = require('./routes/notesRoutes');
 const certificateRoutes = require('./routes/certificateRoutes');
 const transcriptRoutes = require('./routes/transcriptRoutes');
 const completedCourseRoutes = require('./routes/completedCourseRoutes');
+const integrationsRoutes = require('./routes/integrationsRoutes');
+const proctoringRoutes = require('./routes/proctoringRoutes');
+const syncRoutes = require('./routes/syncRoutes');
 
 // Initialize Express app
 const app = express();
@@ -41,6 +44,7 @@ if (process.env.NODE_ENV !== 'test') {
 // Security middleware
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false, // Allow OAuth popups to communicate with parent window
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -109,6 +113,9 @@ app.use('/api/notes', notesRoutes);
 app.use('/api/transcripts', transcriptRoutes);
 app.use('/api/certificates', certificateRoutes);
 app.use('/api/completed-courses', completedCourseRoutes);
+app.use('/api/integrations', integrationsRoutes);
+app.use('/api/proctoring', proctoringRoutes);
+app.use('/api/sync', syncRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -126,7 +133,10 @@ app.get('/', (req, res) => {
       notes: '/api/notes',
       transcripts: '/api/transcripts',
       certificates: '/api/certificates',
-      completedCourses: '/api/completed-courses'
+      completedCourses: '/api/completed-courses',
+      integrations: '/api/integrations',
+      proctoring: '/api/proctoring',
+      sync: '/api/sync'
     }
   });
 });

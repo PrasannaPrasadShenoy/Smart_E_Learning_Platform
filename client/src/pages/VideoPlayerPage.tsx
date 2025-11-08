@@ -1321,7 +1321,10 @@ const VideoPlayerPage: React.FC = () => {
         <NotesPopup
           isOpen={showNotesPopup}
           onClose={closeNotesPopup}
-          notes={notes}
+          notes={{
+            ...notes,
+            videoId: videoId || undefined
+          }}
           type={notesPopupType}
         />
       )}

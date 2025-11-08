@@ -1,6 +1,8 @@
-import React from 'react';
-import { X, Download, Copy, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Download, Copy, Check, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import integrationService, { IntegrationStatus } from '../services/integrationService';
+import { useNavigate } from 'react-router-dom';
 
 interface NotesPopupProps {
   isOpen: boolean;
@@ -9,6 +11,7 @@ interface NotesPopupProps {
     shortNotes: string;
     detailedNotes: string;
     videoTitle: string;
+    videoId?: string;
     estimatedReadTime?: {
       shortNotes: number;
       detailedNotes: number;
@@ -18,7 +21,127 @@ interface NotesPopupProps {
 }
 
 const NotesPopup: React.FC<NotesPopupProps> = ({ isOpen, onClose, notes, type }) => {
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
+  const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
+  const [isExporting, setIsExporting] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchIntegrationStatus();
+    }
+  }, [isOpen]);
+
+  const fetchIntegrationStatus = async () => {
+    try {
+      const status = await integrationService.getStatus();
+      setIntegrationStatus(status);
+    } catch (error) {
+      console.error('Failed to fetch integration status:', error);
+    }
+  };
+
+  const handleExportToNotion = async () => {
+    if (!notes.videoId) {
+      toast.error('Video ID is required for export');
+      return;
+    }
+
+    if (!integrationStatus?.notion?.connected) {
+      toast.error('Please connect Notion first in Settings → Integrations', {
+        duration: 4000
+      });
+      navigate('/integrations');
+      return;
+    }
+
+    try {
+      setIsExporting('notion');
+      const result = await integrationService.exportNotes(notes.videoId, 'notion');
+      
+      toast.success('Notes exported to Notion successfully!', {
+        duration: 3000,
+        style: {
+          background: '#10B981',
+          color: 'white',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          padding: '12px 20px',
+          borderRadius: '8px'
+        }
+      });
+
+      // Open Notion page if URL is available
+      if (result.pageUrl) {
+        window.open(result.pageUrl, '_blank');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to export to Notion', {
+        duration: 3000,
+        style: {
+          background: '#EF4444',
+          color: 'white',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          padding: '12px 20px',
+          borderRadius: '8px'
+        }
+      });
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
+  const handleExportToGoogleDocs = async () => {
+    if (!notes.videoId) {
+      toast.error('Video ID is required for export');
+      return;
+    }
+
+    if (!integrationStatus?.googledocs?.connected) {
+      toast.error('Please connect Google Docs first in Settings → Integrations', {
+        duration: 4000
+      });
+      navigate('/integrations');
+      return;
+    }
+
+    try {
+      setIsExporting('googledocs');
+      const result = await integrationService.exportNotes(notes.videoId, 'googledocs');
+      
+      toast.success('Notes exported to Google Docs successfully!', {
+        duration: 3000,
+        style: {
+          background: '#10B981',
+          color: 'white',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          padding: '12px 20px',
+          borderRadius: '8px'
+        }
+      });
+
+      // Open Google Doc if URL is available
+      if (result.documentUrl) {
+        window.open(result.documentUrl, '_blank');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to export to Google Docs', {
+        duration: 3000,
+        style: {
+          background: '#EF4444',
+          color: 'white',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          padding: '12px 20px',
+          borderRadius: '8px'
+        }
+      });
+    } finally {
+      setIsExporting(null);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -137,9 +260,9 @@ const NotesPopup: React.FC<NotesPopupProps> = ({ isOpen, onClose, notes, type })
           </div>
         </div>
 
-        {/* Footer - Always visible at bottom with Copy and Download buttons */}
+        {/* Footer - Always visible at bottom with Copy, Download, and Export buttons */}
         <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 flex-wrap gap-2">
             <button
               onClick={handleCopy}
               className="flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
@@ -163,8 +286,56 @@ const NotesPopup: React.FC<NotesPopupProps> = ({ isOpen, onClose, notes, type })
               <Download className="w-4 h-4 mr-2" />
               Download
             </button>
+            
+            {/* Export to Notion */}
+            <button
+              onClick={handleExportToNotion}
+              disabled={isExporting === 'notion' || !notes.videoId}
+              className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${
+                integrationStatus?.notion?.connected
+                  ? 'text-white bg-black border border-gray-700 hover:bg-gray-800 focus:ring-gray-500'
+                  : 'text-gray-500 bg-gray-100 border border-gray-300 cursor-not-allowed opacity-60'
+              } ${isExporting === 'notion' ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={integrationStatus?.notion?.connected ? 'Export to Notion' : 'Connect Notion in Settings → Integrations'}
+            >
+              {isExporting === 'notion' ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  {integrationStatus?.notion?.connected ? 'Notion' : 'Notion (Connect)'}
+                </>
+              )}
+            </button>
+
+            {/* Export to Google Docs */}
+            <button
+              onClick={handleExportToGoogleDocs}
+              disabled={isExporting === 'googledocs' || !notes.videoId}
+              className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${
+                integrationStatus?.googledocs?.connected
+                  ? 'text-white bg-blue-600 border border-blue-700 hover:bg-blue-700 focus:ring-blue-500'
+                  : 'text-gray-500 bg-gray-100 border border-gray-300 cursor-not-allowed opacity-60'
+              } ${isExporting === 'googledocs' ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={integrationStatus?.googledocs?.connected ? 'Export to Google Docs' : 'Connect Google Docs in Settings → Integrations'}
+            >
+              {isExporting === 'googledocs' ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  {integrationStatus?.googledocs?.connected ? 'Google Docs' : 'Google Docs (Connect)'}
+                </>
+              )}
+            </button>
           </div>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-500 hidden md:block">
             Generated by Intelligent Learning Assistant (ILA)
           </div>
         </div>

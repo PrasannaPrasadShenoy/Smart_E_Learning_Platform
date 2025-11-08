@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { api, handleApiError } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import { 
@@ -72,45 +72,65 @@ const DashboardPage: React.FC = () => {
   const [assessments, setAssessments] = useState<Assessment[]>([])
   const [insights, setInsights] = useState<Insights | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const { user } = useAuthStore()
+  const { user, isLoading: authLoading } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
 
+  // Fetch data when component mounts or when navigating to dashboard
   useEffect(() => {
-    fetchDashboardData()
-  }, [user])
-
-  const fetchDashboardData = async () => {
-    if (!user?.id) return
-    
-    setIsLoading(true)
-    try {
-      // Fetch user assessments
-      const assessmentsResponse = await api.get(`/assessments/user/${user.id}`)
-      setAssessments(assessmentsResponse.data.data.assessments || [])
-
-      // Fetch insights
-      const insightsResponse = await api.get(`/assessments/analytics/${user.id}`)
-      setInsights(insightsResponse.data.data || null)
-    } catch (error) {
-      console.error('Dashboard data fetch error:', error)
-      // Set default values on error
-      setAssessments([])
-      setInsights(null)
-      handleApiError(error)
-    } finally {
-      setIsLoading(false)
+    // Wait for auth to finish loading
+    if (authLoading) {
+      return
     }
-  }
+
+    // Redirect to login if not authenticated
+    if (!user) {
+      navigate('/login', { replace: true })
+      return
+    }
+
+    // Fetch dashboard data
+    const fetchDashboardData = async () => {
+      if (!user?.id) {
+        console.warn('Cannot fetch dashboard data: user ID not available')
+        setIsLoading(false)
+        return
+      }
+      
+      setIsLoading(true)
+      try {
+        // Fetch user assessments
+        const assessmentsResponse = await api.get(`/assessments/user/${user.id}`)
+        setAssessments(assessmentsResponse.data.data.assessments || [])
+
+        // Fetch insights
+        const insightsResponse = await api.get(`/assessments/analytics/${user.id}`)
+        setInsights(insightsResponse.data.data || null)
+      } catch (error) {
+        console.error('Dashboard data fetch error:', error)
+        // Set default values on error
+        setAssessments([])
+        setInsights(null)
+        handleApiError(error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchDashboardData()
+  }, [user, location.pathname, authLoading, navigate])
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600'
-    if (score >= 60) return 'text-yellow-600'
+    const safeScore = score || 0
+    if (safeScore >= 80) return 'text-green-600'
+    if (safeScore >= 60) return 'text-yellow-600'
     return 'text-red-600'
   }
 
   const getCLIColor = (cli: number) => {
-    if (cli <= 35) return 'text-green-600'
-    if (cli <= 70) return 'text-yellow-600'
+    const safeCli = cli || 0
+    if (safeCli <= 35) return 'text-green-600'
+    if (safeCli <= 70) return 'text-yellow-600'
     return 'text-red-600'
   }
 
@@ -133,14 +153,20 @@ const DashboardPage: React.FC = () => {
     datasets: [
       {
         label: 'Test Score',
-        data: assessments.slice(-7).map(a => a.testScore),
+        data: assessments.slice(-7).map(a => {
+          const score = a.testScore
+          return (score !== undefined && !isNaN(score)) ? score : 0
+        }),
         borderColor: 'rgb(59, 130, 246)',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
         tension: 0.4,
       },
       {
         label: 'CLI',
-        data: assessments.slice(-7).map(a => a.cli),
+        data: assessments.slice(-7).map(a => {
+          const cli = a.cli
+          return (cli !== undefined && !isNaN(cli)) ? cli : 0
+        }),
         borderColor: 'rgb(239, 68, 68)',
         backgroundColor: 'rgba(239, 68, 68, 0.1)',
         tension: 0.4,
@@ -181,7 +207,8 @@ const DashboardPage: React.FC = () => {
     },
   }
 
-  if (isLoading) {
+  // Show loading while auth is being checked or data is being fetched
+  if (authLoading || isLoading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-center py-12">
@@ -189,6 +216,11 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
     )
+  }
+
+  // If no user after loading, don't render (redirect will happen)
+  if (!user) {
+    return null
   }
 
   return (
@@ -229,7 +261,7 @@ const DashboardPage: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Average Score</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {assessments.length > 0 
-                    ? Math.round(assessments.reduce((sum, a) => sum + a.testScore, 0) / assessments.length)
+                    ? Math.round(assessments.reduce((sum, a) => sum + (a.testScore || 0), 0) / assessments.length) || 0
                     : 0
                   }%
                 </p>
@@ -248,7 +280,7 @@ const DashboardPage: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Average CLI</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {assessments.length > 0 
-                    ? Math.round(assessments.reduce((sum, a) => sum + a.cli, 0) / assessments.length)
+                    ? Math.round(assessments.reduce((sum, a) => sum + (a.cli || 0), 0) / assessments.length) || 0
                     : 0
                   }
                 </p>
@@ -266,7 +298,7 @@ const DashboardPage: React.FC = () => {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Improvement</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {insights?.trends?.improvement ? 
+                  {insights?.trends?.improvement !== undefined && !isNaN(insights.trends.improvement) ? 
                     `${insights.trends.improvement > 0 ? '+' : ''}${Math.round(insights.trends.improvement)}`
                     : '0'
                   }
@@ -355,14 +387,14 @@ const DashboardPage: React.FC = () => {
                   <div className="flex items-center space-x-4">
                     <div className="text-center">
                       <p className="text-sm text-gray-600">Score</p>
-                      <p className={`font-bold ${getScoreColor(assessment.testScore)}`}>
-                        {assessment.testScore}%
+                      <p className={`font-bold ${getScoreColor(assessment.testScore || 0)}`}>
+                        {assessment.testScore !== undefined && !isNaN(assessment.testScore) ? assessment.testScore : 0}%
                       </p>
                     </div>
                     <div className="text-center">
                       <p className="text-sm text-gray-600">CLI</p>
-                      <p className={`font-bold ${getCLIColor(assessment.cli)}`}>
-                        {Math.round(assessment.cli)}
+                      <p className={`font-bold ${getCLIColor(assessment.cli || 0)}`}>
+                        {assessment.cli !== undefined && !isNaN(assessment.cli) ? Math.round(assessment.cli) : 0}
                       </p>
                     </div>
                     <div className="text-center">
