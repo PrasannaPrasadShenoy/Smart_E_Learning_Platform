@@ -66,9 +66,17 @@ const assessmentSchema = new mongoose.Schema({
     type: String, // Changed to String to handle YouTube playlist IDs
     required: true
   },
+  courseTitle: {
+    type: String,
+    required: false // Optional, can be fetched from YouTube API if not stored
+  },
   videoId: {
     type: String,
     required: true
+  },
+  videoTitle: {
+    type: String,
+    required: false // Optional, can be fetched from YouTube API if not stored
   },
   answers: [answerSchema],
   metrics: [metricSchema],

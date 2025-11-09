@@ -1,9 +1,11 @@
 const { validationResult } = require('express-validator');
 const Assessment = require('../models/Assessment');
+const Course = require('../models/Course');
 const questionService = require('../services/questionService');
 const cliService = require('../services/cliService');
 const feedbackService = require('../services/feedbackService');
 const playlistProgressService = require('../services/playlistProgressService');
+const youtubeService = require('../services/youtubeService');
 const { asyncHandler } = require('../middlewares/errorHandler');
 
 /**
@@ -21,6 +23,25 @@ const startAssessment = asyncHandler(async (req, res) => {
 
   const { courseId, videoId, numQuestions = 5, difficulty } = req.body;
   const userId = req.user._id;
+
+  // Get course title if available
+  let courseTitle = null;
+  try {
+    const course = await Course.findOne({ playlistId: courseId });
+    if (course) {
+      courseTitle = course.title;
+    } else {
+      // Try to fetch from YouTube API as fallback
+      try {
+        const playlistDetails = await youtubeService.getPlaylistDetails(courseId);
+        courseTitle = playlistDetails.title;
+      } catch (error) {
+        console.error('Error fetching course title:', error.message);
+      }
+    }
+  } catch (error) {
+    console.error('Error getting course title:', error.message);
+  }
 
   // Get questions for the assessment
   const questions = await questionService.getQuestionsForAssessment(
@@ -44,6 +65,7 @@ const startAssessment = asyncHandler(async (req, res) => {
   const assessment = new Assessment({
     userId,
     courseId,
+    courseTitle: courseTitle || 'Unknown Course',
     videoId,
     status: 'in-progress',
     metadata: {
@@ -444,12 +466,53 @@ const getUserAssessments = asyncHandler(async (req, res) => {
 
   const totalAssessments = await Assessment.countDocuments(query);
 
-  res.json({
-    success: true,
-    data: {
-      assessments: assessments.map(assessment => ({
+  // Fetch video titles for assessments
+  const assessmentsWithVideoTitles = await Promise.all(
+    assessments.map(async (assessment) => {
+      let videoTitle = assessment.videoTitle;
+      
+      // If videoTitle is not stored, try to fetch it
+      if (!videoTitle && assessment.videoId) {
+        try {
+          const videoDetails = await youtubeService.getVideoDetails(assessment.videoId);
+          videoTitle = videoDetails.title;
+          
+          // Optionally save it to the assessment for future use
+          if (videoTitle) {
+            assessment.videoTitle = videoTitle;
+            await assessment.save();
+          }
+        } catch (error) {
+          console.error(`Error fetching video title for ${assessment.videoId}:`, error.message);
+          videoTitle = 'Unknown Video';
+        }
+      }
+      
+      // Generate test name
+      const testName = videoTitle 
+        ? `Assessment: ${videoTitle}`
+        : `Assessment for Video ${assessment.videoId.substring(0, 8)}...`;
+      
+      // Get course title - prefer stored, then from populated course, then fallback
+      let courseTitle = assessment.courseTitle;
+      if (!courseTitle && typeof assessment.courseId === 'object' && assessment.courseId) {
+        courseTitle = assessment.courseId.title || 'Unknown Course';
+      } else if (!courseTitle) {
+        courseTitle = 'Unknown Course';
+      }
+      
+      return {
         id: assessment._id,
-        course: assessment.courseId,
+        course: typeof assessment.courseId === 'object' ? assessment.courseId : {
+          _id: assessment.courseId,
+          title: courseTitle,
+          thumbnail: typeof assessment.courseId === 'object' ? assessment.courseId.thumbnail : ''
+        },
+        courseId: typeof assessment.courseId === 'object' ? assessment.courseId._id || assessment.courseId.id : assessment.courseId,
+        courseTitle: courseTitle,
+        videoId: assessment.videoId,
+        videoTitle: videoTitle || 'Unknown Video',
+        testName: testName,
         testScore: assessment.testScore,
         cli: assessment.cli,
         cliClassification: assessment.cliClassification,
@@ -457,7 +520,14 @@ const getUserAssessments = asyncHandler(async (req, res) => {
         timeSpent: assessment.timeSpent,
         status: assessment.status,
         createdAt: assessment.createdAt
-      })),
+      };
+    })
+  );
+
+  res.json({
+    success: true,
+    data: {
+      assessments: assessmentsWithVideoTitles,
       pagination: {
         currentPage: parseInt(page),
         totalPages: Math.ceil(totalAssessments / parseInt(limit)),
@@ -491,22 +561,70 @@ const getAssessmentAnalytics = asyncHandler(async (req, res) => {
     userId,
     status: 'completed'
   })
-  .populate('courseId', 'title')
+  .populate('courseId', 'title thumbnail')
   .sort({ createdAt: -1 })
   .limit(10);
+
+  // Fetch video titles for recent assessments
+  const recentAssessmentsWithTitles = await Promise.all(
+    recentAssessments.map(async (a) => {
+      let videoTitle = a.videoTitle;
+      
+      // If videoTitle is not stored, try to fetch it
+      if (!videoTitle && a.videoId) {
+        try {
+          const videoDetails = await youtubeService.getVideoDetails(a.videoId);
+          videoTitle = videoDetails.title;
+          
+          // Optionally save it to the assessment for future use
+          if (videoTitle) {
+            a.videoTitle = videoTitle;
+            await a.save();
+          }
+        } catch (error) {
+          console.error(`Error fetching video title for ${a.videoId}:`, error.message);
+          videoTitle = 'Unknown Video';
+        }
+      }
+      
+      // Generate test name
+      const testName = videoTitle 
+        ? `Assessment: ${videoTitle}`
+        : `Assessment for Video ${a.videoId.substring(0, 8)}...`;
+      
+      // Get course title - prefer stored, then from populated course, then fallback
+      let courseTitle = a.courseTitle;
+      if (!courseTitle && typeof a.courseId === 'object' && a.courseId) {
+        courseTitle = a.courseId.title || 'Unknown Course';
+      } else if (!courseTitle) {
+        courseTitle = 'Unknown Course';
+      }
+      
+      return {
+        id: a._id,
+        course: typeof a.courseId === 'object' ? a.courseId : {
+          _id: a.courseId,
+          title: courseTitle,
+          thumbnail: typeof a.courseId === 'object' ? a.courseId.thumbnail : ''
+        },
+        courseId: typeof a.courseId === 'object' ? a.courseId._id || a.courseId.id : a.courseId,
+        courseTitle: courseTitle,
+        videoId: a.videoId,
+        videoTitle: videoTitle || 'Unknown Video',
+        testName: testName,
+        testScore: a.testScore,
+        cli: a.cli,
+        cliClassification: a.cliClassification,
+        createdAt: a.createdAt
+      };
+    })
+  );
 
   res.json({
     success: true,
     data: {
       insights,
-      recentAssessments: recentAssessments.map(a => ({
-        id: a._id,
-        course: a.courseId,
-        testScore: a.testScore,
-        cli: a.cli,
-        cliClassification: a.cliClassification,
-        createdAt: a.createdAt
-      }))
+      recentAssessments: recentAssessmentsWithTitles
     }
   });
 });

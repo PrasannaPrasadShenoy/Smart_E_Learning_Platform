@@ -78,19 +78,25 @@ const getAllUserProgress = asyncHandler(async (req, res) => {
     res.json({
       success: true,
       data: {
-        progress: progressList.map(p => ({
-          courseId: p.courseId,
-          courseTitle: p.courseTitle,
-          totalVideos: p.totalVideos,
-          completedVideos: p.completedVideos.length,
-          completionPercentage: p.completionPercentage,
-          testScores: p.testScores.length,
-          averageTestScore: p.averageTestScore,
-          lastWatchedVideo: p.lastWatchedVideo,
-          totalWatchTime: p.totalWatchTime,
-          startedAt: p.startedAt,
-          lastUpdated: p.lastUpdated,
-        }))
+        progress: progressList.map(p => {
+          // Calculate completion percentage if not set
+          const completionPercentage = p.completionPercentage || 
+            (p.totalVideos > 0 ? Math.round((p.completedVideos.length / p.totalVideos) * 100) : 0);
+          
+          return {
+            courseId: p.courseId,
+            courseTitle: p.courseTitle,
+            totalVideos: p.totalVideos,
+            completedVideos: p.completedVideos, // Return array to match ProfilePage
+            completionPercentage: completionPercentage,
+            testScores: p.testScores, // Return array to match ProfilePage
+            averageTestScore: p.averageTestScore,
+            lastWatchedVideo: p.lastWatchedVideo,
+            totalWatchTime: p.totalWatchTime,
+            startedAt: p.startedAt,
+            lastUpdated: p.lastUpdated,
+          };
+        })
       }
     });
   } catch (error) {

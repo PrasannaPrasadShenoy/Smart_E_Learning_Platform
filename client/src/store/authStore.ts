@@ -130,13 +130,16 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true })
         
         try {
-          // Set token in API client
+          // Set token in API client immediately
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`
           
           const response = await api.get('/auth/profile')
           const { user } = response.data.data
           
           set({ user, isLoading: false })
+          
+          // Ensure token is still set after state update
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`
           
         } catch (error) {
           // Token is invalid, clear auth state

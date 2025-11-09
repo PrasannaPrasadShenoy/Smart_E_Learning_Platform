@@ -46,6 +46,9 @@ interface Assessment {
     title: string
     thumbnail: string
   }
+  videoId?: string
+  videoTitle?: string
+  testName?: string
   testScore: number
   cli: number
   cliClassification: string
@@ -72,12 +75,18 @@ const DashboardPage: React.FC = () => {
   const [assessments, setAssessments] = useState<Assessment[]>([])
   const [insights, setInsights] = useState<Insights | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const { user, isLoading: authLoading } = useAuthStore()
+  const { user, isLoading: authLoading, token } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
-
+  
   // Fetch data when component mounts or when navigating to dashboard
   useEffect(() => {
+    // Only fetch if we're on the dashboard page
+    if (location.pathname !== '/dashboard') {
+      setIsLoading(false)
+      return
+    }
+
     // Wait for auth to finish loading
     if (authLoading) {
       return
@@ -86,29 +95,41 @@ const DashboardPage: React.FC = () => {
     // Redirect to login if not authenticated
     if (!user) {
       navigate('/login', { replace: true })
+      setIsLoading(false)
       return
+    }
+
+    // Get user ID - try both _id and id
+    const userId = user.id || (user as any)._id
+    if (!userId) {
+      console.warn('User ID not available:', user)
+      setIsLoading(false)
+      return
+    }
+
+    // Ensure token is set in API client
+    if (token) {
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`
     }
 
     // Fetch dashboard data
     const fetchDashboardData = async () => {
-      if (!user?.id) {
-        console.warn('Cannot fetch dashboard data: user ID not available')
-        setIsLoading(false)
-        return
-      }
-      
       setIsLoading(true)
       try {
+        console.log('Fetching dashboard data for user:', userId)
         // Fetch user assessments
-        const assessmentsResponse = await api.get(`/assessments/user/${user.id}`)
-        setAssessments(assessmentsResponse.data.data.assessments || [])
+        const assessmentsResponse = await api.get(`/assessments/user/${userId}`)
+        const fetchedAssessments = assessmentsResponse.data.data.assessments || []
+        console.log('Fetched assessments:', fetchedAssessments.length)
+        setAssessments(fetchedAssessments)
 
         // Fetch insights
-        const insightsResponse = await api.get(`/assessments/analytics/${user.id}`)
+        const insightsResponse = await api.get(`/assessments/analytics/${userId}`)
+        console.log('Fetched insights:', insightsResponse.data.data)
         setInsights(insightsResponse.data.data || null)
       } catch (error) {
         console.error('Dashboard data fetch error:', error)
-        // Set default values on error
+        // Set empty arrays on error
         setAssessments([])
         setInsights(null)
         handleApiError(error)
@@ -117,8 +138,10 @@ const DashboardPage: React.FC = () => {
       }
     }
 
+    // Always fetch when user is available and auth is done
     fetchDashboardData()
-  }, [user, location.pathname, authLoading, navigate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, location.pathname, authLoading, token])
 
   const getScoreColor = (score: number) => {
     const safeScore = score || 0
@@ -378,9 +401,12 @@ const DashboardPage: React.FC = () => {
                   />
                   <div className="flex-1">
                     <h4 className="font-medium text-gray-900 line-clamp-1">
-                      {assessment.course.title}
+                      {assessment.testName || assessment.course.title}
                     </h4>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-gray-600 line-clamp-1">
+                      {assessment.videoTitle || assessment.course.title}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
                       {new Date(assessment.createdAt).toLocaleDateString()}
                     </p>
                   </div>

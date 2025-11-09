@@ -8,7 +8,9 @@ import {
   Menu, 
   X,
   BookOpen,
-  BarChart3
+  BarChart3,
+  GraduationCap,
+  Target
 } from 'lucide-react'
 
 const Navbar: React.FC = () => {
@@ -24,6 +26,8 @@ const Navbar: React.FC = () => {
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
+    { name: 'Courses', href: '/courses', icon: GraduationCap },
+    { name: 'Test Scores', href: '/test-scores', icon: Target },
     { name: 'Search', href: '/search', icon: Search },
   ]
 

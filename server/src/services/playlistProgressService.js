@@ -117,6 +117,12 @@ class PlaylistProgressService {
         userId
       }).sort({ lastAccessed: -1 });
 
+      // Recalculate overall progress for each playlist to ensure accuracy
+      for (const p of progress) {
+        p.calculateOverallProgress();
+        await p.save();
+      }
+
       return progress;
     } catch (error) {
       console.error('Error getting all user progress:', error);

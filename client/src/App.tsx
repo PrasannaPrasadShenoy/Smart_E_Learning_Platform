@@ -15,6 +15,8 @@ import ProfilePage from './pages/ProfilePage'
 import CompletedPage from './pages/CompletedPage'
 import IntegrationsPage from './pages/IntegrationsPage'
 import GoogleDocsCallbackPage from './pages/GoogleDocsCallbackPage'
+import CoursesPage from './pages/CoursesPage'
+import TestScoresPage from './pages/TestScoresPage'
 
 // Components
 import Navbar from './components/Navbar'
@@ -108,6 +110,14 @@ function App() {
             <Route 
               path="/integrations/googledocs/callback" 
               element={<GoogleDocsCallbackPage />} 
+            />
+            <Route 
+              path="/courses" 
+              element={user ? <CoursesPage /> : <Navigate to="/login" replace />} 
+            />
+            <Route 
+              path="/test-scores" 
+              element={user ? <TestScoresPage /> : <Navigate to="/login" replace />} 
             />
             
             {/* Catch all route */}
