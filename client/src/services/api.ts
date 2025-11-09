@@ -19,6 +19,63 @@ export const assessmentApi = axios.create({
   },
 })
 
+// Special API instance for chat with extended timeout for large prompts
+export const chatApi = axios.create({
+  baseURL: 'http://localhost:4001/api',
+  timeout: 360000, // 6 minutes timeout for chat (handles large prompts with transcripts)
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+// Request interceptor for chat API
+chatApi.interceptors.request.use(
+  (config) => {
+    // Add auth token if available
+    const token = localStorage.getItem('auth-storage')
+    if (token) {
+      try {
+        const authData = JSON.parse(token)
+        if (authData.state?.token) {
+          config.headers.Authorization = `Bearer ${authData.state.token}`
+        }
+      } catch (error) {
+        console.error('Error parsing auth token:', error)
+      }
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
+// Response interceptor for chat API
+chatApi.interceptors.response.use(
+  (response) => {
+    return response
+  },
+  (error) => {
+    // Handle common errors
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth-storage')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    } else if (error.response?.status === 403) {
+      if (!error.config?.url?.includes('/auth/login')) {
+        toast.error('Access denied')
+      }
+    } else if (error.code === 'ECONNABORTED') {
+      // Timeout errors are handled in chatService
+      // Don't show toast here, let chatService handle it
+    } else if (!error.response) {
+      toast.error('Network error. Please check your connection.')
+    }
+    return Promise.reject(error)
+  }
+)
+
 // Special API instance for notes generation with longer timeout
 export const notesApi = axios.create({
   baseURL: 'http://localhost:4001/api',
@@ -407,6 +464,12 @@ export const endpoints = {
     issue: (playlistId: string) => `/certificates/issue/${playlistId}`,
     my: '/certificates/my',
     download: (id: string) => `/certificates/${id}/download`,
+  },
+  
+  // Chat
+  chat: {
+    send: '/chat',
+    quick: '/chat/quick',
   },
 }
 

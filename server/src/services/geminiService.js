@@ -384,19 +384,52 @@ Keep it under 200 words.`;
     }
   }
 
-  // Generic content generation method
-  async generateContent(prompt) {
+  // Generic content generation method with extended timeout for large prompts
+  async generateContent(prompt, options = {}) {
     if (!this.model) {
       throw new Error('Gemini API key not configured');
     }
     
+    const { timeout = 120000 } = options; // Default 2 minutes, can be extended for large prompts
+    
     try {
-      const result = await this.model.generateContent(prompt);
+      // For large prompts, use Promise.race with timeout
+      const generatePromise = this.model.generateContent(prompt);
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Request timeout after ${timeout}ms. The prompt may be too large or the API is slow.`));
+        }, timeout);
+      });
+      
+      const result = await Promise.race([generatePromise, timeoutPromise]);
       const response = await result.response;
       return response.text();
     } catch (error) {
       console.error('Gemini API error for content generation:', error);
-      throw new Error('Failed to generate content');
+      
+      // Handle timeout errors
+      if (error.message && error.message.includes('timeout')) {
+        throw new Error(`Request took too long (${timeout}ms). For very large prompts, this is normal. Please try again or simplify your question.`);
+      }
+      
+      // Handle network errors
+      if (error.message && (error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND') || error.message.includes('ETIMEDOUT'))) {
+        throw new Error('Network error: Unable to connect to Gemini API. Please check your internet connection and try again.');
+      }
+      
+      // Handle API key errors
+      if (error.message && (error.message.includes('API_KEY_INVALID') || error.message.includes('401') || error.message.includes('403'))) {
+        throw new Error('Invalid Gemini API key. Please check your GEMINI_API_KEY in environment variables.');
+      }
+      
+      // Handle quota/rate limit errors
+      if (error.message && (error.message.includes('quota') || error.message.includes('429') || error.message.includes('rate limit'))) {
+        throw new Error('Gemini API quota exceeded or rate limit reached. Please try again later.');
+      }
+      
+      // Generic error
+      throw new Error(`Failed to generate content: ${error.message || 'Unknown error'}`);
     }
   }
 

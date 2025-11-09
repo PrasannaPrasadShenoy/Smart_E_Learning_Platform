@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import NotesPopup from '../components/NotesPopup'
+import ILABot from '../components/ILABot'
 
 // Declare YouTube API
 declare global {
@@ -1328,6 +1329,16 @@ const VideoPlayerPage: React.FC = () => {
           type={notesPopupType}
         />
       )}
+
+      {/* ILABot - Modern context-aware educational assistant */}
+      <ILABot
+        videoId={videoId}
+        transcript={notes?.transcript}
+        description={video?.description}
+        topic={video?.title}
+        videoTitle={video?.title}
+        context={notes?.transcript}
+      />
     </div>
   )
 }
