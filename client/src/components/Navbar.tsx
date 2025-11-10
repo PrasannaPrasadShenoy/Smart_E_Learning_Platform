@@ -10,7 +10,10 @@ import {
   BookOpen,
   BarChart3,
   GraduationCap,
-  Target
+  Target,
+  Users,
+  TrendingUp,
+  FileQuestion
 } from 'lucide-react'
 
 const Navbar: React.FC = () => {
@@ -24,12 +27,24 @@ const Navbar: React.FC = () => {
     navigate('/login')
   }
 
-  const navItems = [
+  const isTeacher = user?.role === 'instructor' || user?.role === 'admin'
+  
+  const studentNavItems = [
     { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
     { name: 'Courses', href: '/courses', icon: GraduationCap },
     { name: 'Test Scores', href: '/test-scores', icon: Target },
+    { name: 'Quiz', href: '/quiz', icon: FileQuestion },
     { name: 'Search', href: '/search', icon: Search },
   ]
+
+  const teacherNavItems = [
+    { name: 'Teacher Dashboard', href: '/teacher/dashboard', icon: TrendingUp },
+    { name: 'Quiz', href: '/quiz', icon: FileQuestion },
+    { name: 'Student Dashboard', href: '/dashboard', icon: BarChart3 },
+    { name: 'Search', href: '/search', icon: Search },
+  ]
+
+  const navItems = isTeacher ? teacherNavItems : studentNavItems
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-50">

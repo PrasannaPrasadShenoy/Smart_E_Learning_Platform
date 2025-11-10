@@ -23,6 +23,8 @@ const integrationsRoutes = require('./routes/integrationsRoutes');
 const proctoringRoutes = require('./routes/proctoringRoutes');
 const syncRoutes = require('./routes/syncRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const teacherRoutes = require('./routes/teacherRoutes');
+const quizRoutes = require('./routes/quizRoutes');
 
 // Initialize Express app
 const app = express();
@@ -118,6 +120,8 @@ app.use('/api/integrations', integrationsRoutes);
 app.use('/api/proctoring', proctoringRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/teacher', teacherRoutes);
+app.use('/api/quiz', quizRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

@@ -67,7 +67,23 @@ const CoursesPage: React.FC = () => {
       console.log('Fetching courses for user:', userId)
       const progressData = await progressService.getAllProgress()
       console.log('Fetched courses:', progressData?.length || 0)
-      setCourses(progressData || [])
+      
+      // Filter out courses with 0% progress (no videos played yet)
+      // Show only courses where at least one video has been played
+      const filteredCourses = (progressData || []).filter(course => {
+        const completedVideosCount = Array.isArray(course.completedVideos) 
+          ? course.completedVideos.length 
+          : course.completedVideos || 0
+        const hasProgress = 
+          completedVideosCount > 0 || 
+          (course.completionPercentage && course.completionPercentage > 0) ||
+          (course.totalWatchTime && course.totalWatchTime > 0)
+        
+        return hasProgress
+      })
+      
+      console.log('Filtered courses (with progress):', filteredCourses.length)
+      setCourses(filteredCourses)
     } catch (error) {
       console.error('Error fetching courses:', error)
       setCourses([])

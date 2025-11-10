@@ -25,6 +25,8 @@ import toast from 'react-hot-toast'
 interface ProfileForm {
   name: string
   email: string
+  college?: string
+  department?: string
   learningStyle: 'visual' | 'auditory' | 'kinesthetic' | 'reading'
   difficultyLevel: 'beginner' | 'intermediate' | 'advanced'
 }
@@ -71,6 +73,8 @@ const ProfilePage: React.FC = () => {
       resetProfile({
         name: user.name,
         email: user.email,
+        college: user.college || '',
+        department: user.department || '',
         learningStyle: user.preferences.learningStyle,
         difficultyLevel: user.preferences.difficultyLevel
       })
@@ -300,25 +304,56 @@ const ProfilePage: React.FC = () => {
                     <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                       Email Address
                     </label>
-                    <div className="relative">
-                      <input
-                        {...registerProfile('email', {
-                          required: 'Email is required',
-                          pattern: {
-                            value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                            message: 'Invalid email address',
-                          },
-                        })}
-                        type="email"
-                        className="input w-full pr-10"
-                        placeholder="Enter your email"
-                      />
-                      <Mail className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    </div>
+                    <input
+                      {...registerProfile('email', {
+                        required: 'Email is required',
+                        pattern: {
+                          value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                          message: 'Invalid email address',
+                        },
+                      })}
+                      type="email"
+                      className="input w-full"
+                      placeholder="Enter your email"
+                      disabled
+                    />
+                    <p className="mt-1 text-sm text-gray-500">
+                      Email cannot be changed
+                    </p>
                     {profileErrors.email && (
                       <p className="mt-1 text-sm text-red-600">{profileErrors.email.message}</p>
                     )}
                   </div>
+
+                  {/* College - Only for students */}
+                  {user?.role === 'student' && (
+                    <div>
+                      <label htmlFor="college" className="block text-sm font-medium text-gray-700 mb-2">
+                        College Name
+                      </label>
+                      <input
+                        {...registerProfile('college')}
+                        type="text"
+                        className="input w-full"
+                        placeholder="e.g., BMSC College of Engineering"
+                      />
+                    </div>
+                  )}
+
+                  {/* Department - Only for students */}
+                  {user?.role === 'student' && (
+                    <div>
+                      <label htmlFor="department" className="block text-sm font-medium text-gray-700 mb-2">
+                        Department
+                      </label>
+                      <input
+                        {...registerProfile('department')}
+                        type="text"
+                        className="input w-full"
+                        placeholder="e.g., Computer Science, Electronics, etc."
+                      />
+                    </div>
+                  )}
 
                   {/* Learning Style */}
                   <div>
@@ -332,10 +367,10 @@ const ProfilePage: React.FC = () => {
                       <option value="visual">Visual</option>
                       <option value="auditory">Auditory</option>
                       <option value="kinesthetic">Kinesthetic</option>
-                      <option value="reading">Reading/Writing</option>
+                      <option value="reading">Reading</option>
                     </select>
                     <p className="mt-1 text-sm text-gray-500">
-                      This helps us personalize your learning experience
+                      This affects how content is presented to you
                     </p>
                   </div>
 

@@ -8,12 +8,12 @@ const Transcript = require('../models/Transcript');
 
 class ChatService {
   constructor() {
-    this.systemPrompt = `You are ILA's (Intelligent Learning Assistant) educational chatbot, designed to help students understand concepts from educational videos.
+    this.systemPrompt = `You are ILA's (Intelligent Learning Assistant) educational chatbot, designed to help students with their learning needs.
 
 Your role:
 - Provide clear, accurate, and student-friendly explanations
-- Use the provided context (transcript, description, or topic) to give relevant answers
-- If the context doesn't contain enough detail, use your own knowledge but stay relevant to the topic
+- Answer questions about the provided context (transcript, description, or topic) when relevant
+- Answer general questions on any topic using your knowledge when the question is not related to the context
 - Break down complex concepts into simpler terms
 - Use examples and analogies when helpful
 - Be concise but comprehensive
@@ -22,9 +22,11 @@ Your role:
 Guidelines:
 - Always prioritize accuracy over speed
 - If you're unsure about something, say so rather than guessing
-- Use the transcript content as the primary source of truth
+- When context is provided and the question relates to it, use the context as the primary source of truth
+- When the question is unrelated to the context, answer using your general knowledge without forcing topic relevance
 - Make explanations accessible to learners at different levels
-- Format responses clearly with proper structure when needed`;
+- Format responses clearly with proper structure when needed
+- You can answer questions on any topic - programming, science, history, general knowledge, etc.`;
 
     this.maxContextLength = 30000; // Maximum characters to include from transcript
   }
@@ -73,31 +75,52 @@ Guidelines:
 
     // Build context section
     let contextSection = '';
+    let hasContext = false;
 
     if (finalTranscript) {
-      contextSection = `VIDEO TRANSCRIPT (Primary Context):
+      contextSection = `VIDEO TRANSCRIPT (Available Context):
 ${finalTranscript}
 
 `;
+      hasContext = true;
     } else if (description) {
-      contextSection = `VIDEO DESCRIPTION:
+      contextSection = `VIDEO DESCRIPTION (Available Context):
 ${description}
 
 `;
+      hasContext = true;
     } else if (topic) {
-      contextSection = `TOPIC:
+      contextSection = `VIDEO TOPIC (Available Context):
 ${topic}
 
 `;
+      hasContext = true;
     }
 
-    // Build the full prompt
-    const prompt = `${this.systemPrompt}
+    // Build the full prompt with intelligent context handling
+    let prompt;
+    
+    if (hasContext) {
+      // When context is available, check if question is related
+      prompt = `${this.systemPrompt}
 
 ${contextSection}STUDENT QUESTION:
 ${message}
 
-Please provide a helpful, accurate answer based on the context above. If the context doesn't fully address the question, use your knowledge to supplement, but keep it relevant to the topic.`;
+Instructions:
+- First, determine if the question is related to the context provided above
+- If the question IS related to the context: Use the context as the primary source and provide a detailed answer based on it. You can supplement with your knowledge if needed.
+- If the question is NOT related to the context (e.g., asking about a completely different topic): Answer the question using your general knowledge without forcing it to relate to the context. The student may be asking a general question while watching a video.
+- Be helpful and answer any question the student asks, whether it's related to the context or not.`;
+    } else {
+      // No context available - answer as general assistant
+      prompt = `${this.systemPrompt}
+
+STUDENT QUESTION:
+${message}
+
+Please provide a helpful, accurate answer to the student's question using your knowledge.`;
+    }
 
     return prompt;
   }

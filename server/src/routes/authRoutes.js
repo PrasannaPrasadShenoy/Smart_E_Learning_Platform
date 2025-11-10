@@ -6,7 +6,8 @@ const {
   getProfile,
   updateProfile,
   changePassword,
-  logout
+  logout,
+  getCollegesAndDepartments
 } = require('../controllers/authController');
 const { authenticateToken } = require('../middlewares/authMiddleware');
 
@@ -69,6 +70,7 @@ const changePasswordValidation = [
 // Routes
 router.post('/register', registerValidation, register);
 router.post('/login', loginValidation, login);
+router.get('/colleges-departments', getCollegesAndDepartments); // Public endpoint
 router.get('/profile', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, updateProfileValidation, updateProfile);
 router.put('/change-password', authenticateToken, changePasswordValidation, changePassword);

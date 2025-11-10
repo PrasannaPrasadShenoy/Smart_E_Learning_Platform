@@ -7,9 +7,18 @@ const Course = require('../models/Course');
  */
 const getCourseProgress = asyncHandler(async (req, res) => {
   const { courseId } = req.params;
-  const userId = req.user.id;
+  // Ensure we use the correct userId - try both id and _id
+  const userId = req.user.id || req.user._id;
+
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: 'User ID not found in request'
+    });
+  }
 
   try {
+    // Always find progress by userId and courseId to ensure user-specific progress
     let progress = await UserProgress.findOne({ userId, courseId });
     
     if (!progress) {
@@ -23,7 +32,7 @@ const getCourseProgress = asyncHandler(async (req, res) => {
       }
 
       progress = new UserProgress({
-        userId,
+        userId: userId, // Explicitly set userId to ensure it's correct
         courseId,
         courseTitle: course.title,
         totalVideos: course.videos.length,
@@ -35,6 +44,15 @@ const getCourseProgress = asyncHandler(async (req, res) => {
       });
 
       await progress.save();
+    }
+
+    // Double-check that the progress belongs to the correct user
+    if (progress.userId.toString() !== userId.toString()) {
+      console.error(`Progress userId mismatch! Expected: ${userId}, Found: ${progress.userId}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Progress record does not belong to the current user'
+      });
     }
 
     res.json({
@@ -68,9 +86,18 @@ const getCourseProgress = asyncHandler(async (req, res) => {
  * Get all user progress
  */
 const getAllUserProgress = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
+  // Ensure we use the correct userId - try both id and _id
+  const userId = req.user.id || req.user._id;
+
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: 'User ID not found in request'
+    });
+  }
 
   try {
+    // Always find progress by userId to ensure user-specific progress
     const progressList = await UserProgress.find({ userId })
       .sort({ lastUpdated: -1 })
       .populate('testScores.assessmentId', 'score totalQuestions createdAt');
@@ -113,9 +140,18 @@ const getAllUserProgress = asyncHandler(async (req, res) => {
  */
 const markVideoCompleted = asyncHandler(async (req, res) => {
   const { courseId, videoId, videoTitle, watchTime } = req.body;
-  const userId = req.user.id;
+  // Ensure we use the correct userId - try both id and _id
+  const userId = req.user.id || req.user._id;
+
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: 'User ID not found in request'
+    });
+  }
 
   try {
+    // Always find progress by userId and courseId to ensure user-specific progress
     let progress = await UserProgress.findOne({ userId, courseId });
     
     if (!progress) {
@@ -129,7 +165,7 @@ const markVideoCompleted = asyncHandler(async (req, res) => {
       }
 
       progress = new UserProgress({
-        userId,
+        userId: userId, // Explicitly set userId to ensure it's correct
         courseId,
         courseTitle: course.title,
         totalVideos: course.videos.length,
@@ -138,6 +174,18 @@ const markVideoCompleted = asyncHandler(async (req, res) => {
         testScores: [],
         averageTestScore: 0,
         totalWatchTime: 0,
+      });
+      
+      // Save the new progress record immediately
+      await progress.save();
+    }
+
+    // Double-check that the progress belongs to the correct user
+    if (progress.userId.toString() !== userId.toString()) {
+      console.error(`Progress userId mismatch! Expected: ${userId}, Found: ${progress.userId}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Progress record does not belong to the current user'
       });
     }
 
@@ -196,15 +244,33 @@ const markVideoCompleted = asyncHandler(async (req, res) => {
  */
 const addTestScore = asyncHandler(async (req, res) => {
   const { courseId, assessmentId, score, totalQuestions } = req.body;
-  const userId = req.user.id;
+  // Ensure we use the correct userId - try both id and _id
+  const userId = req.user.id || req.user._id;
+
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: 'User ID not found in request'
+    });
+  }
 
   try {
+    // Always find progress by userId and courseId to ensure user-specific progress
     let progress = await UserProgress.findOne({ userId, courseId });
     
     if (!progress) {
       return res.status(404).json({
         success: false,
         message: 'Course progress not found. Please start watching videos first.'
+      });
+    }
+
+    // Double-check that the progress belongs to the correct user
+    if (progress.userId.toString() !== userId.toString()) {
+      console.error(`Progress userId mismatch! Expected: ${userId}, Found: ${progress.userId}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Progress record does not belong to the current user'
       });
     }
 

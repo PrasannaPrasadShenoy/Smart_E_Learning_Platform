@@ -17,6 +17,15 @@ import IntegrationsPage from './pages/IntegrationsPage'
 import GoogleDocsCallbackPage from './pages/GoogleDocsCallbackPage'
 import CoursesPage from './pages/CoursesPage'
 import TestScoresPage from './pages/TestScoresPage'
+import TeacherDashboardPage from './pages/TeacherDashboardPage'
+import CourseAnalyticsPage from './pages/CourseAnalyticsPage'
+import CourseKeyAnalyticsPage from './pages/CourseKeyAnalyticsPage'
+import QuizPage from './pages/QuizPage'
+import CreateQuizPage from './pages/CreateQuizPage'
+import TakeQuizPage from './pages/TakeQuizPage'
+import QuizAnalyticsPage from './pages/QuizAnalyticsPage'
+import QuizHistoryPage from './pages/QuizHistoryPage'
+import QuizAttemptDetailsPage from './pages/QuizAttemptDetailsPage'
 
 // Components
 import Navbar from './components/Navbar'
@@ -119,6 +128,44 @@ function App() {
               path="/test-scores" 
               element={user ? <TestScoresPage /> : <Navigate to="/login" replace />} 
             />
+            <Route 
+              path="/quiz" 
+              element={user ? <QuizPage /> : <Navigate to="/login" replace />} 
+            />
+            <Route 
+              path="/quiz/create" 
+              element={user && (user.role === 'instructor' || user.role === 'admin') ? <CreateQuizPage /> : <Navigate to="/quiz" replace />} 
+            />
+            <Route 
+              path="/quiz/take/:quizId" 
+              element={user ? <TakeQuizPage /> : <Navigate to="/login" replace />} 
+            />
+            <Route 
+              path="/quiz/history" 
+              element={user ? <QuizHistoryPage /> : <Navigate to="/login" replace />} 
+            />
+            <Route 
+              path="/quiz/attempt/:attemptId" 
+              element={user ? <QuizAttemptDetailsPage /> : <Navigate to="/login" replace />} 
+            />
+            
+            {/* Teacher routes */}
+            <Route 
+              path="/teacher/dashboard" 
+              element={user && (user.role === 'instructor' || user.role === 'admin') ? <TeacherDashboardPage /> : <Navigate to="/dashboard" replace />} 
+            />
+                  <Route 
+                    path="/teacher/courses/:courseId/analytics" 
+                    element={user && (user.role === 'instructor' || user.role === 'admin') ? <CourseAnalyticsPage /> : <Navigate to="/dashboard" replace />} 
+                  />
+                  <Route 
+                    path="/teacher/course-keys/:keyId/analytics" 
+                    element={user && (user.role === 'instructor' || user.role === 'admin') ? <CourseKeyAnalyticsPage /> : <Navigate to="/dashboard" replace />} 
+                  />
+                  <Route 
+                    path="/quiz/:quizId/analytics" 
+                    element={user && (user.role === 'instructor' || user.role === 'admin') ? <QuizAnalyticsPage /> : <Navigate to="/quiz" replace />} 
+                  />
             
             {/* Catch all route */}
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -17,7 +17,7 @@ const register = asyncHandler(async (req, res) => {
     });
   }
 
-  const { name, email, password, role = 'student' } = req.body;
+  const { name, email, password, role = 'student', college = '', department = '' } = req.body;
 
   // Check if user already exists
   const existingUser = await User.findOne({ email });
@@ -33,7 +33,9 @@ const register = asyncHandler(async (req, res) => {
     name,
     email,
     passwordHash: password, // Will be hashed by pre-save middleware
-    role
+    role,
+    college: college.trim(),
+    department: department.trim()
   });
 
   await user.save();
@@ -119,6 +121,8 @@ const login = asyncHandler(async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        college: user.college,
+        department: user.department,
         preferences: user.preferences
       },
       token
@@ -142,12 +146,14 @@ const getProfile = asyncHandler(async (req, res) => {
  * Update user profile
  */
 const updateProfile = asyncHandler(async (req, res) => {
-  const { name, preferences } = req.body;
+  const { name, preferences, college, department } = req.body;
   const userId = req.user._id;
 
   const updateData = {};
   if (name) updateData.name = name;
   if (preferences) updateData.preferences = preferences;
+  if (college !== undefined) updateData.college = college.trim();
+  if (department !== undefined) updateData.department = department.trim();
 
   const user = await User.findByIdAndUpdate(
     userId,
@@ -209,11 +215,57 @@ const logout = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Get all unique colleges and departments (public endpoint for registration)
+ */
+const getCollegesAndDepartments = asyncHandler(async (req, res) => {
+  try {
+    // Get all unique colleges and departments from students
+    const students = await User.find({ 
+      role: 'student',
+      $or: [
+        { college: { $exists: true, $ne: '' } },
+        { department: { $exists: true, $ne: '' } }
+      ]
+    }).select('college department');
+
+    const collegesSet = new Set();
+    const departmentsSet = new Set();
+
+    students.forEach(student => {
+      if (student.college && student.college.trim()) {
+        collegesSet.add(student.college.trim());
+      }
+      if (student.department && student.department.trim()) {
+        departmentsSet.add(student.department.trim());
+      }
+    });
+
+    const colleges = Array.from(collegesSet).sort();
+    const departments = Array.from(departmentsSet).sort();
+
+    res.json({
+      success: true,
+      data: {
+        colleges,
+        departments
+      }
+    });
+  } catch (error) {
+    console.error('Get colleges and departments error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching colleges and departments'
+    });
+  }
+});
+
 module.exports = {
   register,
   login,
   getProfile,
   updateProfile,
   changePassword,
-  logout
+  logout,
+  getCollegesAndDepartments
 };

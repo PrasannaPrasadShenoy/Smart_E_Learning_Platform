@@ -25,6 +25,16 @@ const userSchema = new mongoose.Schema({
     enum: ['student', 'instructor', 'admin'],
     default: 'student'
   },
+  college: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  department: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   isActive: {
     type: Boolean,
     default: true
@@ -69,6 +79,7 @@ const userSchema = new mongoose.Schema({
 // Index for performance
 userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ role: 1 });
+userSchema.index({ college: 1, department: 1 });
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {

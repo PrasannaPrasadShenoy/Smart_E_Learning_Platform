@@ -7,6 +7,8 @@ interface User {
   name: string
   email: string
   role: 'student' | 'instructor' | 'admin'
+  college?: string
+  department?: string
   preferences: {
     learningStyle: 'visual' | 'auditory' | 'kinesthetic' | 'reading'
     difficultyLevel: 'beginner' | 'intermediate' | 'advanced'
@@ -22,7 +24,7 @@ interface AuthState {
 
 interface AuthActions {
   login: (email: string, password: string) => Promise<void>
-  register: (name: string, email: string, password: string, role?: string) => Promise<void>
+  register: (name: string, email: string, password: string, role?: string, college?: string, department?: string) => Promise<void>
   logout: () => void
   checkAuth: () => Promise<void>
   updateProfile: (data: Partial<User>) => Promise<void>
@@ -77,7 +79,7 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      register: async (name: string, email: string, password: string, role = 'student') => {
+      register: async (name: string, email: string, password: string, role = 'student', college = '', department = '') => {
         set({ isLoading: true, error: null })
         
         try {
@@ -85,7 +87,9 @@ export const useAuthStore = create<AuthStore>()(
             name, 
             email, 
             password, 
-            role 
+            role,
+            college,
+            department
           })
           const { user, token } = response.data.data
           

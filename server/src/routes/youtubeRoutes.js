@@ -16,6 +16,7 @@ const {
   getVideoNotes,
   getVideoQuestions
 } = require('../controllers/youtubeController');
+const { getCourseByKey } = require('../controllers/teacherController');
 const { authenticateToken, optionalAuth } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
@@ -124,6 +125,7 @@ router.get('/video/:videoId', videoIdValidation, getVideoDetails);
 router.get('/video/:videoId/context', videoIdValidation, getVideoContext);
 router.get('/search-courses', searchValidation, searchCourses);
 router.post('/save-playlist', authenticateToken, savePlaylist);
+router.get('/course-by-key/:key', authenticateToken, getCourseByKey); // For students to access courses by key
 
 // AI-powered routes
 router.get('/video/:videoId/content', videoIdValidation, getVideoWithContent);
