@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Key, Plus, Search, BookOpen, Users, TrendingUp, Award, Eye, Clock, Copy, Check, FileText, History, Calendar, XCircle } from 'lucide-react'
+import { Key, Plus, Search, BookOpen, Users, TrendingUp, Award, Eye, Clock, Copy, Check, FileText, History, Calendar, XCircle, Sparkles, Upload, Loader2 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { api, handleApiError } from '../services/api'
 import toast from 'react-hot-toast'
@@ -43,6 +43,16 @@ const QuizPage: React.FC = () => {
   const [quizHistory, setQuizHistory] = useState<any[]>([])
   const [historyStats, setHistoryStats] = useState<any>(null)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [showGenerateQuestionsModal, setShowGenerateQuestionsModal] = useState(false)
+  const [generateForm, setGenerateForm] = useState({
+    description: '',
+    numQuestions: 5,
+    difficulty: 'intermediate',
+    notesFile: null as File | null
+  })
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([])
+  const [showReviewModal, setShowReviewModal] = useState(false)
   const { user, isLoading: authLoading, token } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
@@ -222,7 +232,14 @@ const QuizPage: React.FC = () => {
 
             {activeTab === 'quizzes' ? (
               <>
-                <div className="mb-6 flex justify-end">
+                <div className="mb-6 flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowGenerateQuestionsModal(true)}
+                    className="btn btn-outline"
+                  >
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    Generate Questions
+                  </button>
                   <button
                     onClick={() => navigate('/quiz/create')}
                     className="btn btn-primary"
@@ -376,6 +393,229 @@ const QuizPage: React.FC = () => {
               </>
             )}
 
+            {/* Generate Questions Modal */}
+            {showGenerateQuestionsModal && (
+              <div className="fixed inset-0 z-50 overflow-y-auto">
+                <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                  <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowGenerateQuestionsModal(false)}></div>
+                  <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+                    <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-medium text-gray-900">Generate Questions with AI</h3>
+                        <button onClick={() => setShowGenerateQuestionsModal(false)} className="text-gray-400 hover:text-gray-500">
+                          <XCircle className="w-6 h-6" />
+                        </button>
+                      </div>
+                      <form onSubmit={async (e) => {
+                        e.preventDefault()
+                        if (!generateForm.description.trim()) {
+                          toast.error('Please enter a description')
+                          return
+                        }
+                        setIsGenerating(true)
+                        try {
+                          const formData = new FormData()
+                          formData.append('description', generateForm.description)
+                          formData.append('numQuestions', generateForm.numQuestions.toString())
+                          formData.append('difficulty', generateForm.difficulty)
+                          if (generateForm.notesFile) {
+                            formData.append('notes', generateForm.notesFile)
+                          }
+                          const response = await api.post('/quiz/generate-questions', formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                          })
+                          if (response.data.success) {
+                            setGeneratedQuestions(response.data.data.questions)
+                            setShowGenerateQuestionsModal(false)
+                            setShowReviewModal(true)
+                            toast.success(`Generated ${response.data.data.totalQuestions} questions!`)
+                          }
+                        } catch (error) {
+                          handleApiError(error)
+                        } finally {
+                          setIsGenerating(false)
+                        }
+                      }}>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Topic/Description *</label>
+                            <textarea
+                              value={generateForm.description}
+                              onChange={(e) => setGenerateForm({ ...generateForm, description: e.target.value })}
+                              placeholder="e.g., Python strings, Data structures, Calculus basics..."
+                              className="input w-full h-24"
+                              required
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Questions *</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="50"
+                                value={generateForm.numQuestions}
+                                onChange={(e) => setGenerateForm({ ...generateForm, numQuestions: parseInt(e.target.value) || 5 })}
+                                className="input w-full"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Difficulty Level *</label>
+                              <select
+                                value={generateForm.difficulty}
+                                onChange={(e) => setGenerateForm({ ...generateForm, difficulty: e.target.value })}
+                                className="input w-full"
+                                required
+                              >
+                                <option value="beginner">Beginner</option>
+                                <option value="intermediate">Intermediate</option>
+                                <option value="advanced">Advanced</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Upload Notes (Optional)</label>
+                            <label className="flex items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer hover:bg-gray-50">
+                              {generateForm.notesFile ? (
+                                <div className="text-center">
+                                  <FileText className="w-8 h-8 mx-auto text-primary-600 mb-2" />
+                                  <p className="text-sm text-gray-600">{generateForm.notesFile.name}</p>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      setGenerateForm({ ...generateForm, notesFile: null })
+                                    }}
+                                    className="text-xs text-red-600 mt-1"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="text-center">
+                                  <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                                  <p className="text-sm text-gray-600">Click to upload PDF or text file</p>
+                                  <p className="text-xs text-gray-500">PDF, TXT (max 10MB)</p>
+                                </div>
+                              )}
+                              <input
+                                type="file"
+                                accept=".pdf,.txt"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) {
+                                    if (file.size > 10 * 1024 * 1024) {
+                                      toast.error('File size must be less than 10MB')
+                                      return
+                                    }
+                                    setGenerateForm({ ...generateForm, notesFile: file })
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowGenerateQuestionsModal(false)}
+                            className="btn btn-outline"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={isGenerating}
+                            className="btn btn-primary"
+                          >
+                            {isGenerating ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-4 h-4 mr-2" />
+                                Generate Questions
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Review Generated Questions Modal */}
+            {showReviewModal && generatedQuestions.length > 0 && (
+              <div className="fixed inset-0 z-50 overflow-y-auto">
+                <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                  <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowReviewModal(false)}></div>
+                  <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+                    <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 max-h-[80vh] overflow-y-auto">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-medium text-gray-900">Review Generated Questions ({generatedQuestions.length})</h3>
+                        <button onClick={() => setShowReviewModal(false)} className="text-gray-400 hover:text-gray-500">
+                          <XCircle className="w-6 h-6" />
+                        </button>
+                      </div>
+                      <div className="space-y-4 mb-6">
+                        {generatedQuestions.map((q, index) => (
+                          <div key={index} className="border border-gray-200 rounded-lg p-4">
+                            <div className="flex items-start justify-between mb-2">
+                              <h4 className="font-medium text-gray-900">Question {index + 1}</h4>
+                              <span className="text-xs text-gray-500">{q.points || 1} point{q.points !== 1 ? 's' : ''}</span>
+                            </div>
+                            <p className="text-gray-700 mb-3">{q.question}</p>
+                            <div className="space-y-1 mb-3">
+                              {q.options.map((opt: any, optIndex: number) => (
+                                <div key={optIndex} className={`flex items-center gap-2 p-2 rounded ${opt.isCorrect ? 'bg-green-50 border border-green-200' : 'bg-gray-50'}`}>
+                                  <span className="font-medium text-gray-600">{String.fromCharCode(65 + optIndex)}.</span>
+                                  <span className={opt.isCorrect ? 'text-green-700 font-medium' : 'text-gray-700'}>{opt.text}</span>
+                                  {opt.isCorrect && <Check className="w-4 h-4 text-green-600 ml-auto" />}
+                                </div>
+                              ))}
+                            </div>
+                            {q.explanation && (
+                              <div className="mt-3 p-2 bg-blue-50 rounded text-sm text-gray-700">
+                                <span className="font-medium">Explanation: </span>{q.explanation}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={() => {
+                            setShowReviewModal(false)
+                            setGeneratedQuestions([])
+                          }}
+                          className="btn btn-outline"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => {
+                            navigate('/quiz/create', {
+                              state: { generatedQuestions }
+                            })
+                          }}
+                          className="btn btn-primary"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Create Quiz with These Questions
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Generate Key Modal */}
             {showGenerateKeyModal && selectedQuiz && (
               <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -498,7 +738,7 @@ const QuizPage: React.FC = () => {
                   Access Quiz
                 </button>
               </form>
-            </div>
+              </div>
             ) : (
               <>
                 {/* Quiz History Tab */}

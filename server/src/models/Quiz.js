@@ -60,6 +60,10 @@ const quizSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  isDraft: {
+    type: Boolean,
+    default: false
+  },
   allowMultipleAttempts: {
     type: Boolean,
     default: false

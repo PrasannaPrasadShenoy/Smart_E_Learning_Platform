@@ -66,6 +66,13 @@ const TestScoresPage: React.FC = () => {
       return
     }
 
+    // Redirect teachers to teacher dashboard
+    if (user.role === 'instructor' || user.role === 'admin') {
+      navigate('/teacher/dashboard', { replace: true })
+      setIsLoading(false)
+      return
+    }
+
     // Get user ID - try both _id and id
     const userId = user.id || (user as any)._id
     if (!userId) {

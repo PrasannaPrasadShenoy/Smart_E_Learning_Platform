@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, handleApiError } from '../services/api'
-import { Search, Play, Clock, User, BookOpen, Loader2, Key } from 'lucide-react'
+import { Search, BookOpen, Loader2, Key } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Playlist {
@@ -13,30 +13,13 @@ interface Playlist {
   publishedAt: string
 }
 
-interface Course {
-  id: string
-  playlistId: string
-  title: string
-  description: string
-  thumbnail: string
-  channelTitle: string
-  tags: string[]
-  difficulty: string
-  category: string
-  metadata: {
-    totalVideos: number
-    totalDuration: string
-  }
-}
-
 const SearchPage: React.FC = () => {
   const [query, setQuery] = useState('')
   const [courseKey, setCourseKey] = useState('')
   const [playlists, setPlaylists] = useState<Playlist[]>([])
-  const [courses, setCourses] = useState<Course[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingKey, setIsLoadingKey] = useState(false)
-  const [activeTab, setActiveTab] = useState<'playlists' | 'courses' | 'key'>('playlists')
+  const [activeTab, setActiveTab] = useState<'playlists' | 'key'>('playlists')
   const navigate = useNavigate()
 
   const searchPlaylists = async (searchQuery: string) => {
@@ -55,29 +38,9 @@ const SearchPage: React.FC = () => {
     }
   }
 
-  const searchCourses = async (searchQuery: string) => {
-    if (!searchQuery.trim()) return
-
-    setIsLoading(true)
-    try {
-      const response = await api.get('/youtube/search-courses', {
-        params: { q: searchQuery, limit: 10 }
-      })
-      setCourses(response.data.data.courses)
-    } catch (error) {
-      handleApiError(error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    if (activeTab === 'playlists') {
-      searchPlaylists(query)
-    } else {
-      searchCourses(query)
-    }
+    searchPlaylists(query)
   }
 
   const handlePlaylistSelect = async (playlistId: string) => {
@@ -88,10 +51,6 @@ const SearchPage: React.FC = () => {
     } catch (error) {
       handleApiError(error)
     }
-  }
-
-  const handleCourseSelect = (courseId: string) => {
-    navigate(`/playlist/${courseId}`)
   }
 
   const handleSearchByKey = async (e: React.FormEvent) => {
@@ -140,16 +99,6 @@ const SearchPage: React.FC = () => {
             }`}
           >
             YouTube Playlists
-          </button>
-          <button
-            onClick={() => setActiveTab('courses')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'courses'
-                ? 'bg-white text-primary-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Saved Courses
           </button>
           <button
             onClick={() => setActiveTab('key')}
@@ -228,7 +177,7 @@ const SearchPage: React.FC = () => {
           <div className="flex justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
           </div>
-        ) : activeTab === 'playlists' ? (
+        ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {playlists.map((playlist) => (
               <div
@@ -257,82 +206,18 @@ const SearchPage: React.FC = () => {
               </div>
             ))}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {courses.map((course) => (
-              <div
-                key={course.id}
-                className="card hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => handleCourseSelect(course.id)}
-              >
-                <div className="aspect-video bg-gray-200 rounded-t-lg overflow-hidden">
-                  <img
-                    src={course.thumbnail}
-                    alt={course.title}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="card-content">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium px-2 py-1 bg-primary-100 text-primary-700 rounded-full">
-                      {course.difficulty}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {course.metadata.totalVideos} videos
-                    </span>
-                  </div>
-                  <h3 className="card-title text-lg line-clamp-2 mb-2">
-                    {course.title}
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-2">
-                    by {course.channelTitle}
-                  </p>
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {course.tags.slice(0, 3).map((tag) => (
-                      <span
-                        key={tag}
-                        className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center text-sm text-gray-500">
-                    <Clock className="h-4 w-4 mr-1" />
-                    {course.metadata.totalDuration}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
         )}
 
-        {!isLoading && (
-          <>
-            {activeTab === 'playlists' && playlists.length === 0 && query && (
-              <div className="text-center py-12">
-                <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  No playlists found
-                </h3>
-                <p className="text-gray-600">
-                  Try searching with different keywords
-                </p>
-              </div>
-            )}
-            
-            {activeTab === 'courses' && courses.length === 0 && query && (
-              <div className="text-center py-12">
-                <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  No courses found
-                </h3>
-                <p className="text-gray-600">
-                  Try searching with different keywords or browse playlists
-                </p>
-              </div>
-            )}
-          </>
+        {!isLoading && activeTab === 'playlists' && playlists.length === 0 && query && (
+          <div className="text-center py-12">
+            <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No playlists found
+            </h3>
+            <p className="text-gray-600">
+              Try searching with different keywords
+            </p>
+          </div>
         )}
       </div>
     </div>

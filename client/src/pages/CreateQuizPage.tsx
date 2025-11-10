@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, X, Save, Trash2 } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { ArrowLeft, Plus, X, Save, Trash2, Upload, FileText, Loader2, Sparkles, Check, XCircle } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { api, handleApiError } from '../services/api'
 import toast from 'react-hot-toast'
@@ -16,6 +16,7 @@ interface Question {
 
 const CreateQuizPage: React.FC = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, token } = useAuthStore()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -25,6 +26,88 @@ const CreateQuizPage: React.FC = () => {
   const [showResults, setShowResults] = useState(true)
   const [questions, setQuestions] = useState<Question[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploadingPDF, setIsUploadingPDF] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showGenerateQuestionsModal, setShowGenerateQuestionsModal] = useState(false)
+  const [generateForm, setGenerateForm] = useState({
+    description: '',
+    numQuestions: 5,
+    difficulty: 'intermediate',
+    notesFile: null as File | null
+  })
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [showReviewModal, setShowReviewModal] = useState(false)
+  const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([])
+  const [draftQuizId, setDraftQuizId] = useState<string | null>(null)
+
+  // Load generated questions from navigation state if available
+  useEffect(() => {
+    if (location.state?.generatedQuestions) {
+      const generated = location.state.generatedQuestions.map((q: any) => ({
+        question: q.question,
+        type: 'multiple-choice' as const,
+        options: q.options || [],
+        points: q.points || 1,
+        explanation: q.explanation || ''
+      }))
+      setQuestions(generated)
+      toast.success(`Loaded ${generated.length} generated questions!`)
+    }
+  }, [location.state])
+
+  // Debug: Log when questions change
+  useEffect(() => {
+    console.log('📋 Questions state updated:', questions.length, 'questions')
+    if (questions.length > 0) {
+      console.log('📋 First question:', questions[0])
+    }
+  }, [questions])
+
+  // Load draft quiz from database if quizId is in URL params or location state
+  useEffect(() => {
+    const loadDraftQuiz = async () => {
+      const quizId = new URLSearchParams(location.search).get('quizId') || location.state?.quizId
+      if (quizId && token) {
+        try {
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+          const response = await api.get(`/quiz/${quizId}`)
+          const quiz = response.data.data.quiz
+          
+          if (quiz && quiz.isDraft) {
+            setDraftQuizId(quizId)
+            setTitle(quiz.title.replace('Draft: ', ''))
+            setDescription(quiz.description.replace('Auto-generated quiz based on: ', ''))
+            setTimeLimit(quiz.timeLimit || 0)
+            setPassingScore(quiz.passingScore || 60)
+            setAllowMultipleAttempts(quiz.allowMultipleAttempts || false)
+            setShowResults(quiz.showResults !== undefined ? quiz.showResults : true)
+            
+            // Format questions properly
+            const formattedQuestions = (quiz.questions || []).map((q: any) => ({
+              question: q.question || '',
+              type: (q.type || 'multiple-choice') as 'multiple-choice' | 'true-false' | 'short-answer',
+              options: Array.isArray(q.options) ? q.options.map((opt: any) => ({
+                text: typeof opt === 'string' ? opt : (opt.text || ''),
+                isCorrect: typeof opt === 'object' ? (opt.isCorrect === true) : false
+              })) : [],
+              points: q.points || 1,
+              explanation: q.explanation || '',
+              correctAnswer: q.correctAnswer
+            }))
+            
+            setQuestions(formattedQuestions)
+            toast.success(`Loaded draft quiz with ${formattedQuestions.length} questions!`)
+          }
+        } catch (error) {
+          console.error('Error loading draft quiz:', error)
+        }
+      }
+    }
+    
+    if (user && token) {
+      loadDraftQuiz()
+    }
+  }, [location.search, location.state, user, token])
 
   const addQuestion = () => {
     setQuestions([
@@ -77,6 +160,63 @@ const CreateQuizPage: React.FC = () => {
     }
   }
 
+  const handlePDFUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Please upload a PDF file')
+      return
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be less than 10MB')
+      return
+    }
+
+    setIsUploadingPDF(true)
+    try {
+      const formData = new FormData()
+      formData.append('pdf', file)
+
+      const response = await api.post('/quiz/parse-pdf', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      })
+
+      if (response.data.success) {
+        const parsedQuestions = response.data.data.questions
+        if (parsedQuestions.length > 0) {
+          // Add parsed questions to existing questions
+          setQuestions([...questions, ...parsedQuestions])
+          toast.success(`Successfully parsed ${parsedQuestions.length} question(s) from PDF!`)
+        } else {
+          toast.error('No questions found in PDF')
+        }
+      } else {
+        // Handle partial success (some questions parsed with errors)
+        if (response.data.data?.questions) {
+          const parsedQuestions = response.data.data.questions
+          setQuestions([...questions, ...parsedQuestions])
+          toast.warning(`Parsed ${parsedQuestions.length} question(s) with some errors. Please review.`)
+        } else {
+          toast.error('Failed to parse PDF')
+        }
+      }
+    } catch (error: any) {
+      console.error('PDF upload error:', error)
+      const errorMessage = error.response?.data?.message || 'Failed to parse PDF'
+      toast.error(errorMessage)
+    } finally {
+      setIsUploadingPDF(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -126,18 +266,35 @@ const CreateQuizPage: React.FC = () => {
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`
       }
 
-      const response = await api.post('/quiz', {
-        title,
-        description,
-        questions,
-        timeLimit,
-        passingScore,
-        allowMultipleAttempts,
-        showResults
-      })
-
-      toast.success('Quiz created successfully!')
-      navigate('/quiz')
+      // If it's a draft quiz, update it instead of creating new
+      if (draftQuizId) {
+        const response = await api.put(`/quiz/${draftQuizId}`, {
+          title,
+          description,
+          questions,
+          timeLimit,
+          passingScore,
+          allowMultipleAttempts,
+          showResults,
+          isDraft: false,
+          isActive: true
+        })
+        toast.success('Quiz updated and published successfully!')
+        navigate('/quiz')
+      } else {
+        // Create new quiz
+        const response = await api.post('/quiz', {
+          title,
+          description,
+          questions,
+          timeLimit,
+          passingScore,
+          allowMultipleAttempts,
+          showResults
+        })
+        toast.success('Quiz created successfully!')
+        navigate('/quiz')
+      }
     } catch (error) {
       console.error('Error creating quiz:', error)
       handleApiError(error)
@@ -243,19 +400,84 @@ const CreateQuizPage: React.FC = () => {
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900">Questions ({questions.length})</h2>
-              <button
-                type="button"
-                onClick={addQuestion}
-                className="btn btn-sm btn-primary"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Add Question
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowGenerateQuestionsModal(true)}
+                  className="btn btn-sm btn-outline"
+                >
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  Generate Questions
+                </button>
+                <label className={`btn btn-sm btn-outline cursor-pointer ${isUploadingPDF ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {isUploadingPDF ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      Parsing PDF...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-1" />
+                      Upload PDF
+                    </>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    onChange={handlePDFUpload}
+                    className="hidden"
+                    disabled={isUploadingPDF}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={addQuestion}
+                  className="btn btn-sm btn-primary"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Question
+                </button>
+              </div>
+            </div>
+
+            {/* PDF Format Info */}
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <FileText className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-blue-900 mb-2">PDF Format Guide:</p>
+                  <div className="text-xs text-blue-800 bg-white p-3 rounded border border-blue-200 overflow-x-auto">
+                    <p className="mb-2 font-semibold">Format your PDF questions like this:</p>
+                    <pre className="whitespace-pre-wrap font-mono text-xs">{`Question 1: What is 1 + 1?
+A) 1
+B) 2
+C) 3
+D) 4
+Correct Answer: B
+Points: 1
+Explanation: Basic addition (optional)
+
+Question 2: What is 2 * 2?
+A) 2
+B) 3
+C) 4
+D) 5
+Correct Answer: C
+Points: 2`}</pre>
+                    <p className="mt-2 text-xs text-blue-700">
+                      <strong>Note:</strong> Each question should start with "Question X:" followed by options (A), B), C), D)), 
+                      then "Correct Answer: [A/B/C/D]", optional "Points: [number]", and optional "Explanation: [text]"
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {questions.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                No questions yet. Click "Add Question" to get started.
+                <p className="mb-4">No questions yet.</p>
+                <p className="text-sm">Click "Add Question" to manually add questions or "Upload PDF" to import questions from a PDF file.</p>
               </div>
             ) : (
               <div className="space-y-6">
@@ -447,6 +669,329 @@ const CreateQuizPage: React.FC = () => {
             </button>
           </div>
         </form>
+
+        {/* Generate Questions Modal */}
+        {showGenerateQuestionsModal && (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+              <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowGenerateQuestionsModal(false)}></div>
+              <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium text-gray-900">Generate Questions with AI</h3>
+                    <button onClick={() => setShowGenerateQuestionsModal(false)} className="text-gray-400 hover:text-gray-500">
+                      <XCircle className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault()
+                    if (!generateForm.description.trim()) {
+                      toast.error('Please enter a description')
+                      return
+                    }
+                    setIsGenerating(true)
+                    try {
+                      const formData = new FormData()
+                      formData.append('description', generateForm.description)
+                      formData.append('numQuestions', generateForm.numQuestions.toString())
+                      formData.append('difficulty', generateForm.difficulty)
+                      if (generateForm.notesFile) {
+                        formData.append('notes', generateForm.notesFile)
+                      }
+                      const response = await api.post('/quiz/generate-questions', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' },
+                        timeout: 60000 // 60 second timeout for AI generation
+                      })
+                      
+                      console.log('📝 Full API response:', response.data)
+                      
+                      if (response.data.success) {
+                        const quizData = response.data.data.quiz
+                        const generated = response.data.data.questions
+                        
+                        console.log('📝 Quiz data received:', quizData)
+                        console.log('📝 Generated questions array:', generated)
+                        console.log('📝 Quiz questions from DB:', quizData?.questions)
+                        console.log('📝 Generated questions length:', generated?.length)
+                        console.log('📝 Quiz questions length:', quizData?.questions?.length)
+                        
+                        // Prioritize generated questions (they're already formatted), then quiz.questions, then empty array
+                        let questionsToUse: any[] = []
+                        
+                        if (generated && Array.isArray(generated) && generated.length > 0) {
+                          console.log('✅ Using generated questions array')
+                          questionsToUse = generated
+                        } else if (quizData?.questions && Array.isArray(quizData.questions) && quizData.questions.length > 0) {
+                          console.log('✅ Using quiz.questions from database')
+                          questionsToUse = quizData.questions
+                        } else {
+                          console.warn('⚠️ No questions found in response!')
+                          toast.error('Questions were generated but not found in response. Please try again.')
+                          return
+                        }
+                        
+                        // Format questions for the form
+                        const formattedQuestions = questionsToUse.map((q: any, index: number) => {
+                          // Handle different question formats
+                          const questionText = q.question || q.text || ''
+                          const questionType = (q.type || 'multiple-choice') as 'multiple-choice' | 'true-false' | 'short-answer'
+                          
+                          // Format options
+                          let formattedOptions: Array<{ text: string; isCorrect: boolean }> = []
+                          if (Array.isArray(q.options) && q.options.length > 0) {
+                            formattedOptions = q.options.map((opt: any) => {
+                              if (typeof opt === 'string') {
+                                return { text: opt, isCorrect: false }
+                              } else if (typeof opt === 'object') {
+                                return {
+                                  text: opt.text || opt.label || '',
+                                  isCorrect: opt.isCorrect === true
+                                }
+                              }
+                              return { text: '', isCorrect: false }
+                            })
+                          }
+                          
+                          return {
+                            question: questionText,
+                            type: questionType,
+                            options: formattedOptions,
+                            points: q.points || 1,
+                            explanation: q.explanation || '',
+                            correctAnswer: q.correctAnswer
+                          }
+                        })
+                        
+                        console.log('📝 Formatted questions for form:', formattedQuestions)
+                        console.log('📝 Formatted questions count:', formattedQuestions.length)
+                        
+                        if (formattedQuestions.length === 0) {
+                          console.error('❌ No formatted questions!')
+                          toast.error('Failed to format questions. Please try again.')
+                          return
+                        }
+                        
+                        // Load the draft quiz from database into the form
+                        if (quizData?.id) {
+                          setDraftQuizId(quizData.id)
+                        }
+                        if (quizData?.title) {
+                          setTitle(quizData.title.replace('Draft: ', ''))
+                        }
+                        if (quizData?.description) {
+                          setDescription(quizData.description.replace('Auto-generated quiz based on: ', ''))
+                        }
+                        if (quizData?.timeLimit !== undefined) {
+                          setTimeLimit(quizData.timeLimit || 0)
+                        }
+                        if (quizData?.passingScore !== undefined) {
+                          setPassingScore(quizData.passingScore || 60)
+                        }
+                        if (quizData?.allowMultipleAttempts !== undefined) {
+                          setAllowMultipleAttempts(quizData.allowMultipleAttempts || false)
+                        }
+                        if (quizData?.showResults !== undefined) {
+                          setShowResults(quizData.showResults)
+                        }
+                        
+                        // Set questions - this should trigger re-render
+                        console.log('📝 Setting questions state with', formattedQuestions.length, 'questions')
+                        console.log('📝 Questions to set:', formattedQuestions)
+                        setQuestions([...formattedQuestions]) // Use spread to ensure new array reference
+                        
+                        setGeneratedQuestions(generated || formattedQuestions)
+                        setShowGenerateQuestionsModal(false)
+                        setShowReviewModal(true)
+                        toast.success(`Generated ${formattedQuestions.length} questions and saved to database!`)
+                        
+                        // Scroll to questions section after a brief delay
+                        setTimeout(() => {
+                          const questionsSection = document.querySelector('.bg-white.rounded-lg.shadow-md.p-6')
+                          if (questionsSection) {
+                            questionsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                          }
+                        }, 500)
+                      } else {
+                        console.error('❌ API response not successful:', response.data)
+                        toast.error('Failed to generate questions. Please try again.')
+                      }
+                    } catch (error) {
+                      handleApiError(error)
+                    } finally {
+                      setIsGenerating(false)
+                    }
+                  }}>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Topic/Description *</label>
+                        <textarea
+                          value={generateForm.description}
+                          onChange={(e) => setGenerateForm({ ...generateForm, description: e.target.value })}
+                          placeholder="e.g., Python strings, Data structures, Calculus basics..."
+                          className="input w-full h-24"
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Number of Questions *</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            value={generateForm.numQuestions}
+                            onChange={(e) => setGenerateForm({ ...generateForm, numQuestions: parseInt(e.target.value) || 5 })}
+                            className="input w-full"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Difficulty Level *</label>
+                          <select
+                            value={generateForm.difficulty}
+                            onChange={(e) => setGenerateForm({ ...generateForm, difficulty: e.target.value })}
+                            className="input w-full"
+                            required
+                          >
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Upload Notes (Optional)</label>
+                        <label className="flex items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer hover:bg-gray-50">
+                          {generateForm.notesFile ? (
+                            <div className="text-center">
+                              <FileText className="w-8 h-8 mx-auto text-primary-600 mb-2" />
+                              <p className="text-sm text-gray-600">{generateForm.notesFile.name}</p>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  setGenerateForm({ ...generateForm, notesFile: null })
+                                }}
+                                className="text-xs text-red-600 mt-1"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-center">
+                              <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                              <p className="text-sm text-gray-600">Click to upload PDF or text file</p>
+                              <p className="text-xs text-gray-500">PDF, TXT (max 10MB)</p>
+                            </div>
+                          )}
+                          <input
+                            type="file"
+                            accept=".pdf,.txt"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                if (file.size > 10 * 1024 * 1024) {
+                                  toast.error('File size must be less than 10MB')
+                                  return
+                                }
+                                setGenerateForm({ ...generateForm, notesFile: file })
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div className="mt-6 flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowGenerateQuestionsModal(false)}
+                        className="btn btn-outline"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isGenerating}
+                        className="btn btn-primary"
+                      >
+                        {isGenerating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Generate Questions
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Review Generated Questions Modal */}
+        {showReviewModal && generatedQuestions.length > 0 && (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+              <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowReviewModal(false)}></div>
+              <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium text-gray-900">Review Generated Questions ({generatedQuestions.length})</h3>
+                    <button onClick={() => setShowReviewModal(false)} className="text-gray-400 hover:text-gray-500">
+                      <XCircle className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <div className="space-y-4 mb-6">
+                    {generatedQuestions.map((q, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <h4 className="font-medium text-gray-900">Question {index + 1}</h4>
+                          <span className="text-xs text-gray-500">{q.points || 1} point{q.points !== 1 ? 's' : ''}</span>
+                        </div>
+                        <p className="text-gray-700 mb-3">{q.question}</p>
+                        <div className="space-y-1 mb-3">
+                          {q.options.map((opt: any, optIndex: number) => (
+                            <div key={optIndex} className={`flex items-center gap-2 p-2 rounded ${opt.isCorrect ? 'bg-green-50 border border-green-200' : 'bg-gray-50'}`}>
+                              <span className="font-medium text-gray-600">{String.fromCharCode(65 + optIndex)}.</span>
+                              <span className={opt.isCorrect ? 'text-green-700 font-medium' : 'text-gray-700'}>{opt.text}</span>
+                              {opt.isCorrect && <Check className="w-4 h-4 text-green-600 ml-auto" />}
+                            </div>
+                          ))}
+                        </div>
+                        {q.explanation && (
+                          <div className="mt-3 p-2 bg-blue-50 rounded text-sm text-gray-700">
+                            <span className="font-medium">Explanation: </span>{q.explanation}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        setShowReviewModal(false)
+                        setGeneratedQuestions([])
+                        // Scroll to questions section
+                        document.querySelector('.bg-white.rounded-lg.shadow-md.p-6')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      }}
+                      className="btn btn-primary"
+                    >
+                      <Check className="w-4 h-4 mr-2" />
+                      Done - View in Form ({generatedQuestions.length} questions added)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

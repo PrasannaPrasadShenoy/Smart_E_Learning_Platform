@@ -40,7 +40,6 @@ const Navbar: React.FC = () => {
   const teacherNavItems = [
     { name: 'Teacher Dashboard', href: '/teacher/dashboard', icon: TrendingUp },
     { name: 'Quiz', href: '/quiz', icon: FileQuestion },
-    { name: 'Student Dashboard', href: '/dashboard', icon: BarChart3 },
     { name: 'Search', href: '/search', icon: Search },
   ]
 

@@ -73,7 +73,13 @@ const RegisterPage: React.FC = () => {
         data.role === 'student' ? data.department : ''
       )
       toast.success('Registration successful!')
-      navigate('/dashboard')
+      // Redirect based on user role
+      const { user } = useAuthStore.getState()
+      if (user && (user.role === 'instructor' || user.role === 'admin')) {
+        navigate('/teacher/dashboard')
+      } else {
+        navigate('/dashboard')
+      }
     } catch (error) {
       handleApiError(error)
     }

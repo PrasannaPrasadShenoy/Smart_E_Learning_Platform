@@ -6,6 +6,10 @@ import { useEffect, useState } from 'react'
 // Pages
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import StudentLoginPage from './pages/StudentLoginPage'
+import TeacherLoginPage from './pages/TeacherLoginPage'
+import StudentSignupPage from './pages/StudentSignupPage'
+import TeacherSignupPage from './pages/TeacherSignupPage'
 import SearchPage from './pages/SearchPage'
 import PlaylistPage from './pages/PlaylistPage'
 import VideoPlayerPage from './pages/VideoPlayerPage'
@@ -69,52 +73,80 @@ function App() {
         
         <main className={user ? 'pt-16' : ''}>
           <Routes>
-            {/* Public routes */}
+            {/* Public routes - Role-specific login/signup */}
+            <Route 
+              path="/student/login" 
+              element={!user ? <StudentLoginPage /> : (user && user.role === 'student') ? <Navigate to="/dashboard" replace /> : <Navigate to="/teacher/dashboard" replace />} 
+            />
+            <Route 
+              path="/student/signup" 
+              element={!user ? <StudentSignupPage /> : (user && user.role === 'student') ? <Navigate to="/dashboard" replace /> : <Navigate to="/teacher/dashboard" replace />} 
+            />
+            <Route 
+              path="/teacher/login" 
+              element={!user ? <TeacherLoginPage /> : (user && (user.role === 'instructor' || user.role === 'admin')) ? <Navigate to="/teacher/dashboard" replace /> : <Navigate to="/dashboard" replace />} 
+            />
+            <Route 
+              path="/teacher/signup" 
+              element={!user ? <TeacherSignupPage /> : (user && (user.role === 'instructor' || user.role === 'admin')) ? <Navigate to="/teacher/dashboard" replace /> : <Navigate to="/dashboard" replace />} 
+            />
+            
+            {/* Legacy routes - redirect to role-specific pages */}
             <Route 
               path="/login" 
-              element={!user ? <LoginPage /> : <Navigate to="/dashboard" replace />} 
+              element={!user ? <Navigate to="/student/login" replace /> : (user && (user.role === 'instructor' || user.role === 'admin')) ? <Navigate to="/teacher/dashboard" replace /> : <Navigate to="/dashboard" replace />} 
             />
             <Route 
               path="/register" 
-              element={!user ? <RegisterPage /> : <Navigate to="/dashboard" replace />} 
+              element={!user ? <Navigate to="/student/signup" replace /> : (user && (user.role === 'instructor' || user.role === 'admin')) ? <Navigate to="/teacher/dashboard" replace /> : <Navigate to="/dashboard" replace />} 
             />
             
             {/* Protected routes */}
             <Route 
               path="/" 
-              element={user ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} 
+              element={user ? ((user.role === 'instructor' || user.role === 'admin') ? <Navigate to="/teacher/dashboard" replace /> : <Navigate to="/dashboard" replace />) : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/search" 
-              element={user ? <SearchPage /> : <Navigate to="/login" replace />} 
+              element={user ? <SearchPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/playlist/:playlistId" 
-              element={user ? <PlaylistPage /> : <Navigate to="/login" replace />} 
+              element={user ? <PlaylistPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/video/:videoId" 
-              element={user ? <VideoPlayerPage /> : <Navigate to="/login" replace />} 
+              element={user ? <VideoPlayerPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/assessment/:assessmentId" 
-              element={user ? <AssessmentPage /> : <Navigate to="/login" replace />} 
+              element={user ? <AssessmentPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/dashboard" 
-              element={user ? <DashboardPage /> : <Navigate to="/login" replace />} 
+              element={
+                user ? (
+                  (user.role === 'instructor' || user.role === 'admin') ? (
+                    <Navigate to="/teacher/dashboard" replace />
+                  ) : (
+                    <DashboardPage />
+                  )
+                ) : (
+                  <Navigate to="/student/login" replace />
+                )
+              } 
             />
             <Route 
               path="/profile" 
-              element={user ? <ProfilePage /> : <Navigate to="/login" replace />} 
+              element={user ? <ProfilePage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/profile/completed" 
-              element={user ? <CompletedPage /> : <Navigate to="/login" replace />} 
+              element={user ? <CompletedPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/integrations" 
-              element={user ? <IntegrationsPage /> : <Navigate to="/login" replace />} 
+              element={user ? <IntegrationsPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/integrations/googledocs/callback" 
@@ -122,15 +154,15 @@ function App() {
             />
             <Route 
               path="/courses" 
-              element={user ? <CoursesPage /> : <Navigate to="/login" replace />} 
+              element={user ? <CoursesPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/test-scores" 
-              element={user ? <TestScoresPage /> : <Navigate to="/login" replace />} 
+              element={user ? <TestScoresPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/quiz" 
-              element={user ? <QuizPage /> : <Navigate to="/login" replace />} 
+              element={user ? <QuizPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/quiz/create" 
@@ -138,15 +170,15 @@ function App() {
             />
             <Route 
               path="/quiz/take/:quizId" 
-              element={user ? <TakeQuizPage /> : <Navigate to="/login" replace />} 
+              element={user ? <TakeQuizPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/quiz/history" 
-              element={user ? <QuizHistoryPage /> : <Navigate to="/login" replace />} 
+              element={user ? <QuizHistoryPage /> : <Navigate to="/student/login" replace />} 
             />
             <Route 
               path="/quiz/attempt/:attemptId" 
-              element={user ? <QuizAttemptDetailsPage /> : <Navigate to="/login" replace />} 
+              element={user ? <QuizAttemptDetailsPage /> : <Navigate to="/student/login" replace />} 
             />
             
             {/* Teacher routes */}

@@ -3,6 +3,20 @@ const Quiz = require('../models/Quiz');
 const QuizKey = require('../models/QuizKey');
 const QuizAttempt = require('../models/QuizAttempt');
 const QuizKeyUsage = require('../models/QuizKeyUsage');
+const pdfParserService = require('../services/pdfParserService');
+const geminiService = require('../services/geminiService');
+const multer = require('multer');
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.mimetype === 'text/plain') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF and text files are allowed'), false);
+    }
+  }
+});
 
 /**
  * Create a new quiz
@@ -53,6 +67,75 @@ const createQuiz = asyncHandler(async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error creating quiz'
+    });
+  }
+});
+
+/**
+ * Update a quiz (for draft quizzes)
+ */
+const updateQuiz = asyncHandler(async (req, res) => {
+  const { quizId } = req.params;
+  const { title, description, questions, timeLimit, passingScore, allowMultipleAttempts, showResults, isDraft, isActive } = req.body;
+  const teacherId = req.user._id;
+
+  if (!title || !questions || !Array.isArray(questions) || questions.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Title and at least one question are required'
+    });
+  }
+
+  try {
+    const quiz = await Quiz.findOne({ _id: quizId, teacherId });
+
+    if (!quiz) {
+      return res.status(404).json({
+        success: false,
+        message: 'Quiz not found'
+      });
+    }
+
+    // Update quiz fields
+    quiz.title = title;
+    quiz.description = description || '';
+    quiz.questions = questions;
+    quiz.timeLimit = timeLimit || 0;
+    quiz.passingScore = passingScore || 60;
+    quiz.allowMultipleAttempts = allowMultipleAttempts || false;
+    quiz.showResults = showResults !== undefined ? showResults : true;
+    
+    if (isDraft !== undefined) {
+      quiz.isDraft = isDraft;
+    }
+    if (isActive !== undefined) {
+      quiz.isActive = isActive;
+    }
+
+    await quiz.save();
+
+    res.json({
+      success: true,
+      data: {
+        quiz: {
+          id: quiz._id,
+          title: quiz.title,
+          description: quiz.description,
+          questions: quiz.questions,
+          totalPoints: quiz.totalPoints,
+          timeLimit: quiz.timeLimit,
+          passingScore: quiz.passingScore,
+          isDraft: quiz.isDraft,
+          isActive: quiz.isActive,
+          updatedAt: quiz.updatedAt
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Update quiz error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating quiz'
     });
   }
 });
@@ -465,14 +548,21 @@ const submitQuizAttempt = asyncHandler(async (req, res) => {
       const pointsPossible = question.points || 1;
 
       if (question.type === 'multiple-choice') {
-        // Find the selected option
-        const selectedOption = question.options.find(opt => opt.text === answerData.answer);
+        // Find the selected option - compare by text (normalized)
+        const normalizeText = (text) => text.trim().toLowerCase();
+        const normalizedAnswer = normalizeText(answerData.answer);
+        const selectedOption = question.options.find(opt => 
+          normalizeText(opt.text) === normalizedAnswer
+        );
         isCorrect = selectedOption ? selectedOption.isCorrect : false;
       } else if (question.type === 'true-false') {
-        isCorrect = answerData.answer === question.correctAnswer;
+        // Normalize comparison for true-false
+        const normalizeAnswer = (ans) => ans.trim().toLowerCase();
+        isCorrect = normalizeAnswer(answerData.answer) === normalizeAnswer(question.correctAnswer);
       } else if (question.type === 'short-answer') {
         // Simple case-insensitive comparison for short answer
-        isCorrect = answerData.answer.toLowerCase().trim() === question.correctAnswer.toLowerCase().trim();
+        const normalizeAnswer = (ans) => ans.trim().toLowerCase();
+        isCorrect = normalizeAnswer(answerData.answer) === normalizeAnswer(question.correctAnswer);
       }
 
       if (isCorrect) {
@@ -745,10 +835,13 @@ const getQuizAttemptDetails = asyncHandler(async (req, res) => {
       let correctAnswerText = '';
       if (question.type === 'multiple-choice') {
         const correctOption = question.options.find(opt => opt.isCorrect);
-        correctAnswerText = correctOption ? correctOption.text : '';
+        correctAnswerText = correctOption ? correctOption.text.trim() : '';
       } else {
-        correctAnswerText = question.correctAnswer || '';
+        correctAnswerText = (question.correctAnswer || '').trim();
       }
+      
+      // Normalize the student's answer for comparison display
+      const studentAnswer = (answerData.answer || '').trim();
 
       return {
         questionId: answerData.questionId,
@@ -854,8 +947,175 @@ const getStudentQuizHistory = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Generate quiz questions using Gemini AI
+ */
+const generateQuestions = asyncHandler(async (req, res) => {
+  const { description, numQuestions, difficulty } = req.body;
+  const notesFile = req.file;
+
+  if (!description || !numQuestions) {
+    return res.status(400).json({
+      success: false,
+      message: 'Description and number of questions are required'
+    });
+  }
+
+  if (numQuestions < 1 || numQuestions > 50) {
+    return res.status(400).json({
+      success: false,
+      message: 'Number of questions must be between 1 and 50'
+    });
+  }
+
+  try {
+    let notesText = null;
+
+    // Extract text from uploaded file if provided
+    if (notesFile) {
+      if (notesFile.mimetype === 'application/pdf') {
+        const result = await pdfParserService.parsePDF(notesFile.buffer);
+        notesText = result.questions.map(q => q.question).join('\n');
+        // Also try to get raw text from PDF for better context
+        try {
+          const pdfParseModule = require('pdf-parse');
+          const pdfParse = pdfParseModule.PDFParse;
+          const parser = new pdfParse({ data: notesFile.buffer });
+          const pdfResult = await parser.getText();
+          const fullText = pdfResult.text || pdfResult;
+          // Use full text if available, otherwise use parsed questions
+          if (fullText && fullText.length > notesText.length) {
+            notesText = fullText;
+          }
+        } catch (pdfError) {
+          console.warn('Could not extract full text from PDF, using parsed questions only');
+        }
+      } else if (notesFile.mimetype === 'text/plain') {
+        notesText = notesFile.buffer.toString('utf-8');
+      }
+    }
+
+    // Generate questions using Gemini
+    const questions = await geminiService.generateQuizQuestions(
+      description,
+      parseInt(numQuestions),
+      difficulty || 'intermediate',
+      notesText
+    );
+
+    // Format questions for database
+    const formattedQuestions = questions.map(q => ({
+      question: q.question,
+      type: q.type || 'multiple-choice',
+      options: q.options || [],
+      points: q.points || 1,
+      explanation: q.explanation || ''
+    }));
+
+    // Map frontend difficulty to model enum values
+    const difficultyMap = {
+      'beginner': 'easy',
+      'intermediate': 'medium',
+      'advanced': 'hard'
+    };
+    const mappedDifficulty = difficultyMap[difficulty?.toLowerCase()] || 'medium';
+
+    // Create a draft quiz with generated questions
+    const draftQuiz = new Quiz({
+      title: `Draft: ${description.substring(0, 50)}${description.length > 50 ? '...' : ''}`,
+      description: `Auto-generated quiz based on: ${description}`,
+      teacherId: req.user._id,
+      questions: formattedQuestions,
+      timeLimit: 0,
+      passingScore: 60,
+      allowMultipleAttempts: false,
+      showResults: true,
+      isActive: false,
+      isDraft: true,
+      metadata: {
+        generatedFrom: description,
+        difficulty: mappedDifficulty,
+        generatedAt: new Date()
+      }
+    });
+
+    await draftQuiz.save();
+
+    res.json({
+      success: true,
+      data: {
+        quizId: draftQuiz._id,
+        questions: formattedQuestions,
+        totalQuestions: formattedQuestions.length,
+        quiz: {
+          id: draftQuiz._id,
+          title: draftQuiz.title,
+          description: draftQuiz.description,
+          questions: draftQuiz.questions,
+          totalPoints: draftQuiz.totalPoints,
+          timeLimit: draftQuiz.timeLimit,
+          passingScore: draftQuiz.passingScore,
+          isDraft: draftQuiz.isDraft
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Generate questions error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error generating questions'
+    });
+  }
+});
+
+/**
+ * Parse PDF and extract quiz questions
+ */
+const parsePDF = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: 'No PDF file uploaded'
+    });
+  }
+
+  try {
+    const result = await pdfParserService.parsePDF(req.file.buffer);
+    
+    // Validate questions
+    const validation = pdfParserService.validateQuestions(result.questions);
+    
+    if (!validation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'PDF parsing completed with errors',
+        data: {
+          questions: result.questions,
+          errors: validation.errors,
+          totalQuestions: result.totalQuestions
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        questions: result.questions,
+        totalQuestions: result.totalQuestions
+      }
+    });
+  } catch (error) {
+    console.error('PDF parsing error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error parsing PDF'
+    });
+  }
+});
+
 module.exports = {
   createQuiz,
+  updateQuiz,
   getTeacherQuizzes,
   getQuiz,
   generateQuizKey,
@@ -864,6 +1124,9 @@ module.exports = {
   getQuizAnalytics,
   getTeacherQuizKeys,
   getStudentQuizHistory,
-  getQuizAttemptDetails
+  getQuizAttemptDetails,
+  parsePDF,
+  generateQuestions,
+  upload
 };
 

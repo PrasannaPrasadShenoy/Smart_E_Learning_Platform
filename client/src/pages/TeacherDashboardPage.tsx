@@ -64,6 +64,7 @@ const TeacherDashboardPage: React.FC = () => {
     }
 
     if (user.role !== 'instructor' && user.role !== 'admin') {
+      // Redirect students to their dashboard
       navigate('/dashboard', { replace: true })
       setIsLoading(false)
       return

@@ -165,6 +165,190 @@ IMPORTANT: Generate exactly ${count} MCQ questions. All questions must be type "
     }
   }
 
+  // Generate quiz questions from description and optional notes
+  async generateQuizQuestions(description, numQuestions, difficulty = 'intermediate', notes = null) {
+    if (!this.model) {
+      throw new Error('Gemini API key not configured');
+    }
+    
+    const maxRetries = 5;
+    const retryDelay = 5000; // 5 seconds
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🤖 Gemini attempt ${attempt}/${maxRetries} for quiz questions generation...`);
+        
+        let contentContext = `Topic/Description: ${description}`;
+        
+        if (notes) {
+          contentContext += `\n\nRelevant Notes/Content:\n${notes}`;
+        }
+
+        const prompt = `You are an expert educator creating high-quality multiple-choice questions. Generate exactly ${numQuestions} complete, well-structured Multiple Choice Questions (MCQ) based on the following topic and content.
+
+${contentContext}
+
+CRITICAL REQUIREMENTS FOR QUESTION QUALITY:
+
+1. COMPLETENESS:
+   - Each question MUST be COMPLETE and STANDALONE
+   - Include ALL necessary code snippets, examples, or context IN THE QUESTION TEXT
+   - If a question references code, include the FULL code snippet in the question
+   - If a question asks about output, include the FULL code that produces that output
+   - NEVER create incomplete questions that reference code/examples not shown
+   - Questions should be answerable without external context
+
+2. QUESTION STRUCTURE:
+   - Each question must be clear, unambiguous, and test genuine understanding
+   - Use proper formatting for code snippets (include code with clear indentation, use "Code:" prefix or similar)
+   - Include variable names, values, and all relevant details in the question
+   - Make questions specific and focused on one concept
+   - When including code, format it clearly with line breaks (\\n) and proper indentation
+
+3. OPTIONS QUALITY:
+   - Each question MUST have exactly 4 options (A, B, C, D)
+   - All options must be plausible and related to the question
+   - Distractors (wrong answers) should be common mistakes or misconceptions
+   - Options should be similar in length and format when possible
+   - Avoid obviously wrong options that don't test understanding
+
+4. DIFFICULTY LEVEL: ${difficulty}
+   - Beginner: Test basic concepts, straightforward questions
+   - Intermediate: Require understanding of relationships and application
+   - Advanced: Test deep understanding, edge cases, and complex scenarios
+
+5. VARIETY:
+   - Cover different aspects and subtopics of the main topic
+   - Mix different question types: code output, concept understanding, syntax, best practices
+   - Ensure each question is UNIQUE and tests different knowledge points
+
+6. EXPLANATIONS:
+   - Each question MUST have a clear, educational explanation
+   - Explain WHY the correct answer is correct
+   - Optionally explain why common wrong answers are incorrect
+   - Make explanations helpful for learning
+
+EXAMPLE OF A GOOD COMPLETE QUESTION:
+{
+  "question": "What will be the output of the following Python code?\\n\\nCode:\\nx = 5\\ny = 3\\nresult = x + y * 2\\nprint(result)",
+  "type": "multiple-choice",
+  "options": [
+    { "text": "11", "isCorrect": true },
+    { "text": "16", "isCorrect": false },
+    { "text": "13", "isCorrect": false },
+    { "text": "10", "isCorrect": false }
+  ],
+  "points": 1,
+  "explanation": "The correct answer is 11. Following order of operations (PEMDAS), multiplication is performed before addition: y * 2 = 3 * 2 = 6, then x + 6 = 5 + 6 = 11."
+}
+
+EXAMPLE OF A BAD INCOMPLETE QUESTION (DO NOT CREATE LIKE THIS):
+{
+  "question": "What will be the output of the following code?",
+  // BAD: Missing the actual code snippet!
+}
+
+Format as JSON array with this structure:
+[
+  {
+    "question": "Complete question text with ALL necessary code/examples included",
+    "type": "multiple-choice",
+    "options": [
+      { "text": "Option A text", "isCorrect": false },
+      { "text": "Option B text", "isCorrect": false },
+      { "text": "Option C text", "isCorrect": true },
+      { "text": "Option D text", "isCorrect": false }
+    ],
+    "points": 1,
+    "explanation": "Clear explanation of why the correct answer is correct and why it matters"
+  }
+]
+
+ABSOLUTE REQUIREMENTS:
+- Generate exactly ${numQuestions} MCQ questions
+- Each question MUST be COMPLETE with all code/context included
+- Only ONE option per question should have "isCorrect": true
+- All other options should have "isCorrect": false
+- Questions must be high quality, educational, and test real understanding
+- Return ONLY valid JSON array, no markdown formatting, no additional text before or after`;
+
+        const result = await this.model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        
+        // Try to parse JSON, handle if it's wrapped in markdown
+        let jsonText = text.trim();
+        if (jsonText.includes('```json')) {
+          jsonText = jsonText.match(/```json\n([\s\S]*?)\n```/)?.[1] || jsonText;
+        } else if (jsonText.includes('```')) {
+          jsonText = jsonText.match(/```\n([\s\S]*?)\n```/)?.[1] || jsonText;
+        }
+        
+        // Remove any leading/trailing non-JSON text
+        const jsonMatch = jsonText.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          jsonText = jsonMatch[0];
+        }
+        
+        const questions = JSON.parse(jsonText);
+        
+        // Normalize questions to ensure correct format
+        const normalizedQuestions = questions.map((q, index) => ({
+          question: q.question || `Question ${index + 1}`,
+          type: 'multiple-choice',
+          options: (q.options || []).map((opt, optIndex) => ({
+            text: typeof opt === 'string' ? opt : (opt.text || `Option ${String.fromCharCode(65 + optIndex)}`),
+            isCorrect: typeof opt === 'object' ? (opt.isCorrect === true) : false
+          })),
+          points: q.points || 1,
+          explanation: q.explanation || ''
+        }));
+        
+        // Ensure exactly one correct answer per question
+        normalizedQuestions.forEach(q => {
+          const correctCount = q.options.filter(opt => opt.isCorrect).length;
+          if (correctCount === 0 && q.options.length > 0) {
+            // If no correct answer, make first one correct
+            q.options[0].isCorrect = true;
+          } else if (correctCount > 1) {
+            // If multiple correct, keep only first one
+            let foundFirst = false;
+            q.options.forEach(opt => {
+              if (opt.isCorrect && foundFirst) {
+                opt.isCorrect = false;
+              } else if (opt.isCorrect) {
+                foundFirst = true;
+              }
+            });
+          }
+        });
+        
+        console.log(`✅ Generated ${normalizedQuestions.length} quiz questions successfully on attempt ${attempt}`);
+        return normalizedQuestions;
+        
+      } catch (error) {
+        console.error(`❌ Gemini API error for quiz questions (attempt ${attempt}/${maxRetries}):`, error.message);
+        
+        // Check if it's a retryable error
+        if (error.status === 503 || error.status === 429 || error.message.includes('overloaded') || error.message.includes('Service Unavailable')) {
+          if (attempt < maxRetries) {
+            const delay = retryDelay * Math.pow(2, attempt - 1); // Exponential backoff: 5s, 10s, 20s, 40s
+            console.log(`⏳ Retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        
+        // If it's the last attempt or non-retryable error, throw
+        if (attempt === maxRetries) {
+          console.error('🚫 All Gemini retry attempts failed for quiz questions');
+          console.log('💡 Consider trying again later when Gemini API is less overloaded');
+          throw new Error(`Failed to generate quiz questions after ${maxRetries} attempts: ${error.message}`);
+        }
+      }
+    }
+  }
+
   // Generate course-level comprehensive test
   async generateCourseTest(courseTranscripts, difficulty = 'intermediate') {
     try {
