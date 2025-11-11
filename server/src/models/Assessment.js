@@ -78,6 +78,10 @@ const assessmentSchema = new mongoose.Schema({
     type: String,
     required: false // Optional, can be fetched from YouTube API if not stored
   },
+  questionIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Question'
+  }], // Store which questions were used in this assessment
   answers: [answerSchema],
   metrics: [metricSchema],
   testScore: {

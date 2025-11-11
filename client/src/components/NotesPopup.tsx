@@ -4,6 +4,127 @@ import { toast } from 'react-hot-toast';
 import integrationService, { IntegrationStatus } from '../services/integrationService';
 import { useNavigate } from 'react-router-dom';
 
+// Function to format markdown-like text to proper HTML/JSX
+const formatNotes = (text: string): JSX.Element[] => {
+  if (!text) return [];
+
+  const lines = text.split('\n');
+  const formattedElements: JSX.Element[] = [];
+  let currentListItems: string[] = [];
+  let listKey = 0;
+
+  const processList = () => {
+    if (currentListItems.length > 0) {
+      formattedElements.push(
+        <ul key={`list-${listKey++}`} className="list-disc list-inside mb-6 space-y-3 ml-4">
+          {currentListItems.map((item, idx) => (
+            <li key={idx} className="text-gray-700 leading-relaxed">
+              {formatInlineMarkdown(item)}
+            </li>
+          ))}
+        </ul>
+      );
+      currentListItems = [];
+    }
+  };
+
+  const formatInlineMarkdown = (line: string): JSX.Element => {
+    if (!line) return <></>;
+    
+    const parts: (string | JSX.Element)[] = [];
+    let key = 0;
+    let lastIndex = 0;
+
+    // Match **bold** text (non-greedy to handle multiple bold sections)
+    const boldRegex = /\*\*([^*]+?)\*\*/g;
+    let match;
+
+    while ((match = boldRegex.exec(line)) !== null) {
+      // Add text before the match
+      if (match.index > lastIndex) {
+        const textBefore = line.substring(lastIndex, match.index);
+        if (textBefore) {
+          parts.push(textBefore);
+        }
+      }
+      // Add bold text
+      parts.push(
+        <strong key={`bold-${key++}`} className="font-semibold text-gray-900">
+          {match[1]}
+        </strong>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < line.length) {
+      const remainingText = line.substring(lastIndex);
+      if (remainingText) {
+        parts.push(remainingText);
+      }
+    }
+
+    return <>{parts.length > 0 ? parts : line}</>;
+  };
+
+  lines.forEach((line, index) => {
+    const trimmedLine = line.trim();
+
+    // Check if it's a bullet point (starts with * or - or •)
+    if (trimmedLine.match(/^[\*\-\•]\s+/)) {
+      // Remove the bullet marker and any extra spaces
+      const listItem = trimmedLine.replace(/^[\*\-\•]\s+/, '').trim();
+      if (listItem) {
+        currentListItems.push(listItem);
+      }
+    } else {
+      // Process any pending list first
+      processList();
+
+      // Check if it's a header (starts with #)
+      if (trimmedLine.startsWith('#')) {
+        const headerMatch = trimmedLine.match(/^(#{1,6})\s+(.+)$/);
+        if (headerMatch) {
+          const level = headerMatch[1].length;
+          const text = headerMatch[2];
+          const HeaderTag = `h${Math.min(level, 6)}` as keyof JSX.IntrinsicElements;
+          formattedElements.push(
+            <HeaderTag
+              key={`header-${index}`}
+              className={`font-bold text-gray-900 mb-3 mt-6 ${
+                level === 1 ? 'text-2xl' :
+                level === 2 ? 'text-xl' :
+                level === 3 ? 'text-lg' :
+                'text-base'
+              }`}
+            >
+              {formatInlineMarkdown(text)}
+            </HeaderTag>
+          );
+          return;
+        }
+      }
+
+      // Regular paragraph (non-empty line)
+      if (trimmedLine) {
+        formattedElements.push(
+          <p key={`para-${index}`} className="mb-4 text-gray-700 leading-relaxed">
+            {formatInlineMarkdown(trimmedLine)}
+          </p>
+        );
+      } else if (index < lines.length - 1) {
+        // Empty line for spacing (but not at the end)
+        formattedElements.push(<div key={`space-${index}`} className="mb-2" />);
+      }
+    }
+  });
+
+  // Process any remaining list
+  processList();
+
+  return formattedElements.length > 0 ? formattedElements : [<p key="empty" className="text-gray-500">No content</p>];
+};
+
 interface NotesPopupProps {
   isOpen: boolean;
   onClose: () => void;
@@ -254,8 +375,8 @@ const NotesPopup: React.FC<NotesPopupProps> = ({ isOpen, onClose, notes, type })
         {/* Content - Scrollable */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="prose prose-lg max-w-none">
-            <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-              {currentNotes}
+            <div className="text-gray-700 leading-relaxed">
+              {formatNotes(currentNotes)}
             </div>
           </div>
         </div>

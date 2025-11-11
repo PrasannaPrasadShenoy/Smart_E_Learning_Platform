@@ -285,19 +285,22 @@ const TestDetailsModal: React.FC<TestDetailsModalProps> = ({ course, onClose }) 
                       </div>
 
                       {/* Score Badge */}
-                      {video.hasTest && video.assessment ? (
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <div className={`text-xl font-bold ${getScoreColor(video.assessment.testScore || 0).split(' ')[0]}`}>
-                              {video.assessment.testScore !== undefined && !isNaN(video.assessment.testScore) 
-                                ? video.assessment.testScore 
-                                : 0}%
+                      {video.hasTest && video.assessment ? (() => {
+                        const scoreColorClass = getScoreColor(video.assessment.testScore || 0).split(' ')[0]
+                        return (
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <div className={`text-xl font-bold ${scoreColorClass}`}>
+                                {video.assessment.testScore !== undefined && !isNaN(video.assessment.testScore) 
+                                  ? video.assessment.testScore 
+                                  : 0}%
+                              </div>
+                              <div className="text-xs text-gray-500">Score</div>
                             </div>
-                            <div className="text-xs text-gray-500">Score</div>
+                            <ChevronRight className="w-5 h-5 text-gray-400" />
                           </div>
-                          <ChevronRight className="w-5 h-5 text-gray-400" />
-                        </div>
-                      ) : (
+                        )
+                      })() : (
                         <div className="text-sm text-gray-400 italic">
                           No test taken
                         </div>

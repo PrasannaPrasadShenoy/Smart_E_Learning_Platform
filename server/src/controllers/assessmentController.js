@@ -67,6 +67,7 @@ const startAssessment = asyncHandler(async (req, res) => {
     courseId,
     courseTitle: courseTitle || 'Unknown Course',
     videoId,
+    questionIds: finalQuestions.map(q => q._id), // Store the question IDs used in this assessment
     status: 'in-progress',
     metadata: {
       sessionInfo: {
@@ -182,6 +183,42 @@ const completeAssessment = asyncHandler(async (req, res) => {
   let correctAnswers = 0;
   const processedAnswers = [];
 
+  // Helper function to normalize answer text for comparison
+  const normalizeAnswer = (text) => {
+    if (!text) return '';
+    // Remove common prefixes like "A) ", "B) ", "Option A", "Option B", etc.
+    return text
+      .replace(/^[A-Z]\)\s*/i, '') // Remove "A) " or "a) "
+      .replace(/^[A-Z]\.\s*/i, '') // Remove "A. " or "a. "
+      .replace(/^option\s+[A-Z]\s*/i, '') // Remove "Option A " or "option a "
+      .trim()
+      .toLowerCase();
+  };
+
+  // Get the exact questions that were used in this assessment
+  const Question = require('../models/Question');
+  const mongoose = require('mongoose');
+  
+  // Fetch questions by the stored questionIds
+  let assessmentQuestions = [];
+  if (assessment.questionIds && assessment.questionIds.length > 0) {
+    assessmentQuestions = await Question.find({
+      _id: { $in: assessment.questionIds }
+    });
+    console.log(`📊 Found ${assessmentQuestions.length} questions from stored questionIds`);
+  }
+
+  // Fallback: if no questionIds stored, try to get questions the old way
+  if (assessmentQuestions.length === 0) {
+    console.log('⚠️ No questionIds stored, fetching questions the old way...');
+    assessmentQuestions = await questionService.getQuestionsForAssessment(
+      assessment.courseId,
+      assessment.videoId,
+      answers.length,
+      'intermediate'
+    );
+  }
+
   for (const answer of answers) {
     // For fallback questions, we need to handle them differently
     // since they might not exist in the database
@@ -203,20 +240,79 @@ const completeAssessment = asyncHandler(async (req, res) => {
       isCorrect = true; // Assume correct for fallback questions
       console.log('Processing fallback question:', answer.questionId);
     } else {
-      // For regular questions, get from database
-      const questions = await questionService.getQuestionsForAssessment(
-        assessment.courseId,
-        assessment.videoId,
-        1
-      );
-      question = questions.find(q => q._id.toString() === answer.questionId);
+      // Find the question from the assessment questions
+      question = assessmentQuestions.find(q => {
+        const qId = (q._id || q.id || '').toString();
+        const aQId = (answer.questionId || answer._id || '').toString();
+        return qId === aQId;
+      });
 
       if (!question) {
-        console.log('Question not found:', answer.questionId);
+        console.log('⚠️ Question not found in assessment questions:', answer.questionId);
+        console.log('Available question IDs:', assessmentQuestions.map(q => q._id?.toString()));
         continue; // Skip invalid questions
       }
 
-      isCorrect = answer.selectedAnswer === question.correctAnswer;
+      // Normalize both answers for comparison
+      const normalizedSelected = normalizeAnswer(answer.selectedAnswer);
+      let normalizedCorrect = normalizeAnswer(question.correctAnswer);
+      
+      // If correctAnswer is not in options, try to find it from options
+      if (question.options && question.options.length > 0) {
+        // First, try direct match
+        let matchesCorrect = normalizedSelected === normalizedCorrect;
+        
+        // If no direct match, check if selectedAnswer matches any option
+        const selectedOption = question.options.find(opt => {
+          const optText = typeof opt === 'string' ? opt : (opt.text || opt);
+          return normalizeAnswer(optText) === normalizedSelected;
+        });
+        
+        // Find the correct option
+        let correctOption = question.options.find(opt => {
+          const optText = typeof opt === 'string' ? opt : (opt.text || opt);
+          return normalizeAnswer(optText) === normalizedCorrect;
+        });
+        
+        // If correctAnswer doesn't match any option, try to find option by index (A=0, B=1, etc.)
+        if (!correctOption && question.correctAnswer) {
+          const optionMatch = question.correctAnswer.match(/^option\s*([A-D])/i) || question.correctAnswer.match(/^([A-D])\)?\s*$/i);
+          if (optionMatch) {
+            const optionIndex = optionMatch[1].charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
+            if (optionIndex >= 0 && optionIndex < question.options.length) {
+              const optText = typeof question.options[optionIndex] === 'string' 
+                ? question.options[optionIndex] 
+                : (question.options[optionIndex].text || question.options[optionIndex]);
+              correctOption = { text: optText };
+              normalizedCorrect = normalizeAnswer(optText);
+            }
+          }
+        }
+        
+        // Compare selected option with correct option
+        if (selectedOption && correctOption) {
+          const selectedText = typeof selectedOption === 'string' ? selectedOption : (selectedOption.text || selectedOption);
+          const correctText = typeof correctOption === 'string' ? correctOption : (correctOption.text || correctOption);
+          matchesCorrect = normalizeAnswer(selectedText) === normalizeAnswer(correctText);
+        } else if (selectedOption) {
+          // If we found selected option but not correct, use direct comparison
+          matchesCorrect = normalizedSelected === normalizedCorrect;
+        }
+        
+        isCorrect = matchesCorrect;
+      } else {
+        // No options available, use direct comparison
+        isCorrect = normalizedSelected === normalizedCorrect;
+      }
+      
+      console.log(`🔍 Grading question ${answer.questionId}:`, {
+        selectedAnswer: answer.selectedAnswer,
+        correctAnswer: question.correctAnswer,
+        normalizedSelected,
+        normalizedCorrect,
+        isCorrect,
+        hasOptions: !!(question.options && question.options.length > 0)
+      });
     }
 
     if (isCorrect) correctAnswers++;
@@ -359,13 +455,28 @@ const getAssessmentData = asyncHandler(async (req, res) => {
     });
   }
 
-  // Get questions for this assessment
-  const questions = await questionService.getQuestionsForAssessment(
-    assessment.courseId,
-    assessment.videoId,
-    5, // Default number of questions
-    'intermediate'
-  );
+  // Get the exact questions that were used in this assessment
+  const Question = require('../models/Question');
+  let questions = [];
+  
+  // If questionIds are stored, fetch those exact questions
+  if (assessment.questionIds && assessment.questionIds.length > 0) {
+    questions = await Question.find({
+      _id: { $in: assessment.questionIds }
+    });
+    console.log(`📊 Found ${questions.length} questions from stored questionIds`);
+  }
+  
+  // Fallback: if no questionIds stored, try to get questions the old way
+  if (questions.length === 0) {
+    console.log('⚠️ No questionIds stored, fetching questions the old way...');
+    questions = await questionService.getQuestionsForAssessment(
+      assessment.courseId,
+      assessment.videoId,
+      5, // Default number of questions
+      'intermediate'
+    );
+  }
 
   if (questions.length === 0) {
     return res.status(404).json({

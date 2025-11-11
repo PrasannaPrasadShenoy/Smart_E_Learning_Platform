@@ -320,8 +320,10 @@ const VideoPlayerPage: React.FC = () => {
   }
 
   const startAssessment = () => {
-    if (generatedAssessmentId) {
-      navigate(`/assessment/${generatedAssessmentId}`)
+    if (generatedAssessmentId && videoId) {
+      navigate(`/assessment/${generatedAssessmentId}`, {
+        state: { videoId, returnPath: `/video/${videoId}` }
+      })
     }
   }
 

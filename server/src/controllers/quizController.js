@@ -1085,13 +1085,52 @@ const parsePDF = asyncHandler(async (req, res) => {
     // Validate questions
     const validation = pdfParserService.validateQuestions(result.questions);
     
-    if (!validation.isValid) {
+    // If no questions were parsed at all, provide helpful error message
+    if (result.questions.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'PDF parsing completed with errors',
+        message: 'No questions found in PDF. Please check the format.',
+        data: {
+          questions: [],
+          errors: [
+            'No questions could be parsed from the PDF.',
+            'Expected format:',
+            'Question 1: [Question text]',
+            'A) [Option A]',
+            'B) [Option B]',
+            'C) [Option C]',
+            'D) [Option D]',
+            'Correct Answer: A',
+            'Points: 1 (optional)',
+            'Explanation: [explanation] (optional)'
+          ],
+          totalQuestions: 0
+        }
+      });
+    }
+    
+    if (!validation.isValid) {
+      // Add format requirements to errors if there are validation errors
+      const formatErrors = [
+        ...validation.errors,
+        '',
+        'Expected PDF format:',
+        'Question 1: [Question text]',
+        'A) [Option A]',
+        'B) [Option B]',
+        'C) [Option C]',
+        'D) [Option D]',
+        'Correct Answer: A',
+        'Points: 1 (optional)',
+        'Explanation: [explanation] (optional)'
+      ];
+      
+      return res.status(400).json({
+        success: false,
+        message: 'PDF parsing completed with formatting errors',
         data: {
           questions: result.questions,
-          errors: validation.errors,
+          errors: formatErrors,
           totalQuestions: result.totalQuestions
         }
       });
@@ -1106,9 +1145,33 @@ const parsePDF = asyncHandler(async (req, res) => {
     });
   } catch (error) {
     console.error('PDF parsing error:', error);
+    
+    // Provide more helpful error messages
+    let errorMessage = error.message || 'Error parsing PDF';
+    let formatErrors = [];
+    
+    if (error.message && error.message.includes('parse')) {
+      formatErrors = [
+        'Failed to parse PDF. Please check the format.',
+        '',
+        'Expected PDF format:',
+        'Question 1: [Question text]',
+        'A) [Option A]',
+        'B) [Option B]',
+        'C) [Option C]',
+        'D) [Option D]',
+        'Correct Answer: A',
+        'Points: 1 (optional)',
+        'Explanation: [explanation] (optional)'
+      ];
+    }
+    
     res.status(500).json({
       success: false,
-      message: error.message || 'Error parsing PDF'
+      message: errorMessage,
+      data: {
+        errors: formatErrors.length > 0 ? formatErrors : [errorMessage]
+      }
     });
   }
 });

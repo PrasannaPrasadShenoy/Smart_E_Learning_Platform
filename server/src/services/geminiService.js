@@ -96,8 +96,10 @@ Requirements:
 - Create ALL ${count} questions as Multiple Choice Questions (MCQ) ONLY
 - Create all questions in English
 - Difficulty level: ${difficulty}
-- Each question MUST have exactly 4 options (Option A, Option B, Option C, Option D)
-- The correctAnswer should be one of the four options (e.g., "Option A" or the exact text of the correct option)
+- Each question MUST have exactly 4 options
+- Options should be formatted as: ["A) First option text", "B) Second option text", "C) Third option text", "D) Fourth option text"]
+- The correctAnswer MUST be the EXACT TEXT of the correct option (e.g., if option B is "B) Variables do not require explicit declaration", then correctAnswer should be "B) Variables do not require explicit declaration" or just "Variables do not require explicit declaration")
+- DO NOT use "Option A" or "Option B" as correctAnswer - use the actual option text
 - Make questions challenging but fair for ${difficulty} level
 - Translate and understand the content first, then create questions
 - Make each question UNIQUE and different from others
@@ -110,8 +112,8 @@ Format as JSON array with this structure:
   {
     "question": "Question text here in English",
     "type": "mcq",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correctAnswer": "Option A", // Must match one of the options exactly
+    "options": ["A) First option text", "B) Second option text", "C) Third option text", "D) Fourth option text"],
+    "correctAnswer": "B) Second option text", // MUST be the exact text from one of the options above
     "explanation": "Why this answer is correct in English",
     "difficulty": "${difficulty}"
   }

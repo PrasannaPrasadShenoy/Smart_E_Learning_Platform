@@ -12,12 +12,55 @@ const generateVideoQuestions = async (transcript, videoId, courseId, difficulty 
     const savedQuestions = [];
     for (const q of questions) {
       try {
+        // Normalize correctAnswer - if it's "Option A" format, extract the actual option text
+        let correctAnswer = q.correctAnswer || '';
+        const options = q.options || [];
+        
+        // If correctAnswer is in "Option A" or "A" format, find the actual option text
+        if (correctAnswer && options.length > 0) {
+          const optionMatch = correctAnswer.match(/^option\s*([A-D])/i) || correctAnswer.match(/^([A-D])\)?\s*$/i);
+          if (optionMatch) {
+            const optionIndex = optionMatch[1].charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
+            if (optionIndex >= 0 && optionIndex < options.length) {
+              const optionText = typeof options[optionIndex] === 'string' 
+                ? options[optionIndex] 
+                : (options[optionIndex].text || options[optionIndex]);
+              correctAnswer = optionText;
+              console.log(`✅ Normalized correctAnswer from "${q.correctAnswer}" to "${correctAnswer}"`);
+            }
+          }
+        }
+        
+        // If still no correctAnswer, try to find it from options with isCorrect flag
+        if (!correctAnswer && options.length > 0) {
+          const correctOption = options.find(opt => {
+            if (typeof opt === 'object' && opt !== null) {
+              return opt.isCorrect === true || opt.isCorrect === 'true';
+            }
+            return false;
+          });
+          if (correctOption) {
+            correctAnswer = correctOption.text || String(correctOption);
+            console.log(`✅ Extracted correctAnswer from options: "${correctAnswer}"`);
+          }
+        }
+        
+        // Normalize options to strings
+        const normalizedOptions = options.map(opt => {
+          if (typeof opt === 'string') {
+            return opt;
+          } else if (opt && typeof opt === 'object') {
+            return opt.text || opt.option || String(opt);
+          }
+          return String(opt);
+        });
+        
         const question = new Question({
           courseId,
           videoId,
           question: q.question,
-          options: q.options || [],
-          correctAnswer: q.correctAnswer,
+          options: normalizedOptions,
+          correctAnswer: correctAnswer,
           explanation: q.explanation || '',
           difficulty: q.difficulty || difficulty,
           topic: extractTopic(transcript),
@@ -34,9 +77,14 @@ const generateVideoQuestions = async (transcript, videoId, courseId, difficulty 
         const saved = await question.save();
         savedQuestions.push(saved);
         
-        // Debug: Verify metadata was saved correctly
+        // Debug: Verify correctAnswer was saved correctly
         const savedObj = saved.toObject ? saved.toObject() : saved;
-        console.log(`✅ Saved question ${savedQuestions.length}/${questions.length}: ${saved._id}, metadata.type=${savedObj.metadata?.type || 'NOT SET'}`);
+        console.log(`✅ Saved question ${savedQuestions.length}/${questions.length}:`, {
+          id: saved._id,
+          correctAnswer: savedObj.correctAnswer,
+          optionsCount: savedObj.options?.length || 0,
+          metadataType: savedObj.metadata?.type || 'NOT SET'
+        });
       } catch (saveError) {
         console.error(`❌ Error saving question:`, saveError.message);
         // Continue with other questions even if one fails

@@ -30,6 +30,7 @@ import TakeQuizPage from './pages/TakeQuizPage'
 import QuizAnalyticsPage from './pages/QuizAnalyticsPage'
 import QuizHistoryPage from './pages/QuizHistoryPage'
 import QuizAttemptDetailsPage from './pages/QuizAttemptDetailsPage'
+import QuizTerminatedPage from './pages/QuizTerminatedPage'
 
 // Components
 import Navbar from './components/Navbar'
@@ -179,6 +180,10 @@ function App() {
             <Route 
               path="/quiz/attempt/:attemptId" 
               element={user ? <QuizAttemptDetailsPage /> : <Navigate to="/student/login" replace />} 
+            />
+            <Route 
+              path="/quiz/terminated" 
+              element={<QuizTerminatedPage />} 
             />
             
             {/* Teacher routes */}

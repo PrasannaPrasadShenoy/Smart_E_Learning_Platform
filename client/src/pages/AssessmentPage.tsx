@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api, assessmentApi, handleApiError } from '../services/api'
 import { 
   ArrowLeft, 
@@ -39,6 +39,7 @@ interface Metrics {
 
 const AssessmentPage: React.FC = () => {
   const { assessmentId } = useParams<{ assessmentId: string }>()
+  const location = useLocation()
   const [assessment, setAssessment] = useState<AssessmentData | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
@@ -48,11 +49,22 @@ const AssessmentPage: React.FC = () => {
   const [isWebcamActive, setIsWebcamActive] = useState(false)
   const [metrics, setMetrics] = useState<Metrics[]>([])
   const [confidence, setConfidence] = useState(3)
+  const [returnPath, setReturnPath] = useState<string | null>(null)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const metricsIntervalRef = useRef<number | null>(null)
   const navigate = useNavigate()
+
+  // Get return path from location state
+  useEffect(() => {
+    const state = location.state as { videoId?: string; returnPath?: string } | null
+    if (state?.returnPath) {
+      setReturnPath(state.returnPath)
+    } else if (state?.videoId) {
+      setReturnPath(`/video/${state.videoId}`)
+    }
+  }, [location.state])
 
   useEffect(() => {
     if (assessmentId) {
@@ -226,9 +238,20 @@ const AssessmentPage: React.FC = () => {
         }
       })
       
-      // Redirect back to video page with assessment results
-      const videoId = assessment?.videoId || 'unknown'
-      navigate(`/video/${videoId}?assessment=${assessmentId}&completed=true`)
+      // Redirect back to the video page
+      if (returnPath) {
+        navigate(returnPath)
+      } else {
+        // Fallback: try to get videoId from assessment or location state
+        const state = location.state as { videoId?: string } | null
+        const videoId = state?.videoId || assessment?.videoId
+        if (videoId && videoId !== 'unknown') {
+          navigate(`/video/${videoId}`)
+        } else {
+          // Last resort: go back
+          navigate(-1)
+        }
+      }
     } catch (error: any) {
       console.error('Assessment submission error:', error)
       

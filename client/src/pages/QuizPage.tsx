@@ -233,20 +233,13 @@ const QuizPage: React.FC = () => {
             {activeTab === 'quizzes' ? (
               <>
                 <div className="mb-6 flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowGenerateQuestionsModal(true)}
-                    className="btn btn-outline"
-                  >
-                    <Sparkles className="w-5 h-5 mr-2" />
-                    Generate Questions
-                  </button>
-                  <button
-                    onClick={() => navigate('/quiz/create')}
-                    className="btn btn-primary"
-                  >
-                    <Plus className="w-5 h-5 mr-2" />
-                    Create New Quiz
-                  </button>
+                <button
+                  onClick={() => navigate('/quiz/create')}
+                  className="btn btn-primary"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Create New Quiz
+                </button>
                 </div>
 
                 {quizzes.length > 0 ? (

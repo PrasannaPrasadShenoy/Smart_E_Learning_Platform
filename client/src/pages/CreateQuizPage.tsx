@@ -28,6 +28,7 @@ const CreateQuizPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false)
   const [isUploadingPDF, setIsUploadingPDF] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadedPDFs, setUploadedPDFs] = useState<Array<{ name: string; size: number }>>([])
   const [showGenerateQuestionsModal, setShowGenerateQuestionsModal] = useState(false)
   const [generateForm, setGenerateForm] = useState({
     description: '',
@@ -174,6 +175,22 @@ const CreateQuizPage: React.FC = () => {
       return
     }
 
+    // Check for duplicate PDF (same name and size)
+    const isDuplicate = uploadedPDFs.some(
+      pdf => pdf.name === file.name && pdf.size === file.size
+    )
+
+    if (isDuplicate) {
+      toast.error(`This PDF "${file.name}" has already been uploaded. Please upload a different file.`, {
+        duration: 4000
+      })
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+      return
+    }
+
     setIsUploadingPDF(true)
     try {
       const formData = new FormData()
@@ -190,24 +207,97 @@ const CreateQuizPage: React.FC = () => {
         if (parsedQuestions.length > 0) {
           // Add parsed questions to existing questions
           setQuestions([...questions, ...parsedQuestions])
+          // Track uploaded PDF
+          setUploadedPDFs([...uploadedPDFs, { name: file.name, size: file.size }])
           toast.success(`Successfully parsed ${parsedQuestions.length} question(s) from PDF!`)
         } else {
           toast.error('No questions found in PDF')
         }
       } else {
         // Handle partial success (some questions parsed with errors)
-        if (response.data.data?.questions) {
+        if (response.data.data?.questions && response.data.data.questions.length > 0) {
           const parsedQuestions = response.data.data.questions
           setQuestions([...questions, ...parsedQuestions])
-          toast.warning(`Parsed ${parsedQuestions.length} question(s) with some errors. Please review.`)
+          // Track uploaded PDF even if there were errors
+          setUploadedPDFs([...uploadedPDFs, { name: file.name, size: file.size }])
+          
+          // Show detailed error messages
+          const errors = response.data.data?.errors || []
+          if (errors.length > 0) {
+            const errorMessage = `Parsed ${parsedQuestions.length} question(s) with formatting errors:\n\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...and ${errors.length - 5} more errors` : ''}`
+            toast.error(errorMessage, {
+              duration: 6000,
+              style: {
+                whiteSpace: 'pre-line',
+                maxWidth: '500px'
+              }
+            })
+          } else {
+            toast.warning(`Parsed ${parsedQuestions.length} question(s) with some errors. Please review.`)
+          }
         } else {
-          toast.error('Failed to parse PDF')
+          // No questions parsed - show formatting requirements
+          const errors = response.data.data?.errors || []
+          let errorMessage = 'Failed to parse PDF. The PDF format is incorrect.\n\n'
+          
+          if (errors.length > 0) {
+            errorMessage += 'Formatting errors found:\n'
+            errorMessage += errors.slice(0, 10).join('\n')
+            if (errors.length > 10) {
+              errorMessage += `\n...and ${errors.length - 10} more errors`
+            }
+          } else {
+            errorMessage += 'Expected PDF format:\n'
+            errorMessage += 'Question 1: [Question text]\n'
+            errorMessage += 'A) [Option A]\n'
+            errorMessage += 'B) [Option B]\n'
+            errorMessage += 'C) [Option C]\n'
+            errorMessage += 'D) [Option D]\n'
+            errorMessage += 'Correct Answer: A\n'
+            errorMessage += 'Points: 1 (optional)\n'
+            errorMessage += 'Explanation: [explanation] (optional)\n\n'
+            errorMessage += 'Please ensure your PDF follows this format.'
+          }
+          
+          toast.error(errorMessage, {
+            duration: 8000,
+            style: {
+              whiteSpace: 'pre-line',
+              maxWidth: '500px'
+            }
+          })
         }
       }
     } catch (error: any) {
       console.error('PDF upload error:', error)
-      const errorMessage = error.response?.data?.message || 'Failed to parse PDF'
-      toast.error(errorMessage)
+      const errorData = error.response?.data
+      let errorMessage = 'Failed to parse PDF'
+      
+      // Show detailed error messages from backend
+      if (errorData?.data?.errors && Array.isArray(errorData.data.errors)) {
+        errorMessage = 'PDF format is incorrect:\n\n'
+        errorMessage += errorData.data.errors.slice(0, 10).join('\n')
+        if (errorData.data.errors.length > 10) {
+          errorMessage += `\n...and ${errorData.data.errors.length - 10} more errors`
+        }
+        errorMessage += '\n\nExpected format:\n'
+        errorMessage += 'Question 1: [Question text]\n'
+        errorMessage += 'A) [Option A]\n'
+        errorMessage += 'B) [Option B]\n'
+        errorMessage += 'C) [Option C]\n'
+        errorMessage += 'D) [Option D]\n'
+        errorMessage += 'Correct Answer: A'
+      } else if (errorData?.message) {
+        errorMessage = errorData.message
+      }
+      
+      toast.error(errorMessage, {
+        duration: 8000,
+        style: {
+          whiteSpace: 'pre-line',
+          maxWidth: '500px'
+        }
+      })
     } finally {
       setIsUploadingPDF(false)
       // Reset file input
@@ -473,6 +563,26 @@ Points: 2`}</pre>
                 </div>
               </div>
             </div>
+
+            {/* Show uploaded PDFs list */}
+            {uploadedPDFs.length > 0 && (
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm font-medium text-blue-900 mb-2">
+                  Uploaded PDFs ({uploadedPDFs.length}):
+                </p>
+                <ul className="space-y-1">
+                  {uploadedPDFs.map((pdf, idx) => (
+                    <li key={idx} className="text-sm text-blue-700 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      <span className="truncate">{pdf.name}</span>
+                      <span className="text-blue-500 text-xs">
+                        ({(pdf.size / 1024).toFixed(1)} KB)
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {questions.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
