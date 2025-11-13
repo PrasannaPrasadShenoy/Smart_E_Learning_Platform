@@ -232,7 +232,7 @@ const CourseAnalyticsPage: React.FC = () => {
     }
 
     try {
-      const sheets = [
+      const sheets: Array<{ name: string; data: any[] }> = [
         {
           name: 'Summary',
           data: [

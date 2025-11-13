@@ -247,7 +247,7 @@ const CreateQuizPage: React.FC = () => {
               }
             })
           } else {
-            toast.warning(`Parsed ${parsedQuestions.length} question(s) with some errors. Please review.`)
+            toast(`Parsed ${parsedQuestions.length} question(s) with some errors. Please review.`, { icon: '⚠️' })
           }
         } else {
           // No questions parsed - show formatting requirements
