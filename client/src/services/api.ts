@@ -1,9 +1,12 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
+// Get API base URL from environment variable, fallback to localhost for development
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4001/api';
+
 // Create axios instance
 export const api = axios.create({
-  baseURL:  'http://localhost:4001/api',
+  baseURL: API_BASE_URL,
   timeout: 10000, // Default 10 seconds for most requests
   headers: {
     'Content-Type': 'application/json',
@@ -12,7 +15,7 @@ export const api = axios.create({
 
 // Special API instance for assessment generation with longer timeout
 export const assessmentApi = axios.create({
-  baseURL: 'http://localhost:4001/api',
+  baseURL: API_BASE_URL,
   timeout: 600000, // 10 minutes timeout for assessment generation
   headers: {
     'Content-Type': 'application/json',
@@ -21,7 +24,7 @@ export const assessmentApi = axios.create({
 
 // Special API instance for chat with extended timeout for large prompts
 export const chatApi = axios.create({
-  baseURL: 'http://localhost:4001/api',
+  baseURL: API_BASE_URL,
   timeout: 360000, // 6 minutes timeout for chat (handles large prompts with transcripts)
   headers: {
     'Content-Type': 'application/json',
@@ -78,7 +81,7 @@ chatApi.interceptors.response.use(
 
 // Special API instance for notes generation with longer timeout
 export const notesApi = axios.create({
-  baseURL: 'http://localhost:4001/api',
+  baseURL: API_BASE_URL,
   timeout: 300000, // 5 minutes timeout for notes generation
   headers: {
     'Content-Type': 'application/json',
@@ -87,7 +90,7 @@ export const notesApi = axios.create({
 
 // Special API instance for PDF download with longer timeout
 export const pdfApi = axios.create({
-  baseURL: 'http://localhost:4001/api',
+  baseURL: API_BASE_URL,
   timeout: 120000, // 2 minutes timeout for PDF download
   headers: {
     'Content-Type': 'application/json',
@@ -96,7 +99,7 @@ export const pdfApi = axios.create({
 
 // Certificates API (PDF downloads, issuance)
 export const certificateApi = axios.create({
-  baseURL: 'http://localhost:4001/api',
+  baseURL: API_BASE_URL,
   timeout: 120000,
   headers: {
     'Content-Type': 'application/json',
