@@ -22,6 +22,8 @@ interface Quiz {
   totalPoints: number
   timeLimit: number
   passingScore: number
+  scheduledStartTime?: string
+  scheduledEndTime?: string
 }
 
 const TakeQuizPage: React.FC = () => {

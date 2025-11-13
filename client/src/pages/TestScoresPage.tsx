@@ -93,10 +93,10 @@ const TestScoresPage: React.FC = () => {
       const response = await api.get(`/assessments/user/${userId}?status=completed&limit=1000`)
       const fetchedAssessments: Assessment[] = response.data.data.assessments || []
 
-      // Sort assessments by creation date (newest first)
+        // Sort assessments by creation date (newest first)
       const sortedAssessments = fetchedAssessments.sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
 
       setAssessments(sortedAssessments)
     } catch (error) {
@@ -170,43 +170,43 @@ const TestScoresPage: React.FC = () => {
             const courseThumbnail = getCourseThumbnail(assessment)
 
             return (
-              <div
+            <div
                 key={assessment.id}
                 onClick={() => setSelectedTest(assessment)}
-                className="card hover:shadow-lg transition-shadow cursor-pointer"
-              >
-                <div className="card-content">
-                  <div className="flex items-start gap-6">
-                    {/* Course Thumbnail */}
+              className="card hover:shadow-lg transition-shadow cursor-pointer"
+            >
+              <div className="card-content">
+                <div className="flex items-start gap-6">
+                  {/* Course Thumbnail */}
                     {courseThumbnail ? (
-                      <img
+                    <img
                         src={courseThumbnail}
                         alt={courseTitle}
                         className="w-24 h-16 object-cover rounded-lg flex-shrink-0"
-                      />
-                    ) : (
+                    />
+                  ) : (
                       <div className="w-24 h-16 bg-gradient-to-br from-primary-400 to-primary-600 rounded-lg flex-shrink-0 flex items-center justify-center">
                         <BookOpen className="h-8 w-8 text-white" />
-                      </div>
-                    )}
+                    </div>
+                  )}
 
                     {/* Test Info */}
-                    <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
+                      <div className="flex-1">
                           <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-2">
                             {assessment.videoTitle || assessment.testName}
-                          </h3>
+                        </h3>
                           <p className="text-sm text-gray-600 mb-2">
                             {courseTitle}
                           </p>
                           <div className="flex items-center gap-4 text-xs text-gray-500">
-                            <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />
                               {new Date(assessment.createdAt).toLocaleString()}
-                            </span>
-                          </div>
+                          </span>
                         </div>
+                      </div>
 
                         {/* Score Badge */}
                         <div className="flex flex-col items-end gap-2">

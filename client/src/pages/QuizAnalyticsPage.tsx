@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Users, TrendingUp, Award, BarChart3, Target, Eye, Key, Copy, Check } from 'lucide-react'
+import { ArrowLeft, Users, TrendingUp, Award, BarChart3, Target, Eye, Key, Copy, Check, Download, FileSpreadsheet } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { api, handleApiError } from '../services/api'
 import toast from 'react-hot-toast'
+import { exportToExcel, exportToCSV, exportMultipleSheets, formatDateForExport } from '../utils/exportUtils'
 
 interface Quiz {
   id: string
@@ -69,6 +70,7 @@ const QuizAnalyticsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [selectedQuizKey, setSelectedQuizKey] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [showExportMenu, setShowExportMenu] = useState(false)
 
   useEffect(() => {
     if (location.pathname !== `/quiz/${quizId}/analytics`) {
@@ -102,6 +104,20 @@ const QuizAnalyticsPage: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quizId, user, location.pathname, authLoading, token])
+
+  // Close export menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showExportMenu && !(event.target as Element).closest('.export-menu-container')) {
+        setShowExportMenu(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showExportMenu])
 
   const fetchAnalytics = async () => {
     if (!quizId) return
@@ -158,6 +174,158 @@ const QuizAnalyticsPage: React.FC = () => {
     setTimeout(() => setCopiedKey(null), 2000)
   }
 
+  const handleExportExcel = () => {
+    if (!quiz || !statistics || students.length === 0) {
+      toast.error('No data to export')
+      return
+    }
+
+    try {
+      // Prepare data for export
+      const sheets = [
+        {
+          name: 'Summary',
+          data: [
+            { Metric: 'Quiz Title', Value: quiz.title },
+            { Metric: 'Total Questions', Value: quiz.totalQuestions },
+            { Metric: 'Total Points', Value: quiz.totalPoints },
+            { Metric: 'Passing Score', Value: `${quiz.passingScore}%` },
+            { Metric: '', Value: '' },
+            { Metric: 'Total Attempts', Value: statistics.totalAttempts },
+            { Metric: 'Unique Students', Value: statistics.uniqueStudents },
+            { Metric: 'Average Score', Value: `${Math.round(statistics.averageScore)}%` },
+            { Metric: 'Pass Rate', Value: `${Math.round(statistics.passRate)}%` }
+          ]
+        },
+        {
+          name: 'Students Summary',
+          data: students.map(student => ({
+            'Student Name': student.name,
+            'Email': student.email,
+            'College': student.college || '',
+            'Department': student.department || '',
+            'Total Attempts': student.totalAttempts,
+            'Best Score (%)': Math.round(student.bestScore),
+            'Average Score (%)': Math.round(student.averageScore),
+            'Status': student.bestScore >= quiz.passingScore ? 'Passed' : 'Not Passed',
+            'Passing Score Required': `${quiz.passingScore}%`
+          }))
+        },
+        {
+          name: 'Question Performance',
+          data: questionStats.map((qStat, index) => ({
+            'Question #': index + 1,
+            'Question': qStat.question,
+            'Correct Answers': qStat.correctCount,
+            'Total Attempts': qStat.totalAttempts,
+            'Accuracy (%)': Math.round(qStat.accuracy)
+          }))
+        }
+      ]
+
+      // Add detailed attempts if available
+      if (students.length > 0) {
+        const attemptsData: any[] = []
+        students.forEach(student => {
+          student.attempts.forEach(attempt => {
+            attemptsData.push({
+              'Student Name': student.name,
+              'Email': student.email,
+              'Score': attempt.score,
+              'Percentage (%)': Math.round(attempt.percentage),
+              'Status': attempt.passed ? 'Passed' : 'Failed',
+              'Time Spent (seconds)': attempt.timeSpent,
+              'Submitted At': formatDateForExport(attempt.submittedAt)
+            })
+          })
+        })
+        
+        if (attemptsData.length > 0) {
+          sheets.push({
+            name: 'All Attempts',
+            data: attemptsData
+          })
+        }
+      }
+
+      const filename = `Quiz_Analytics_${quiz.title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}`
+      exportMultipleSheets(sheets, filename)
+      toast.success('Analytics exported to Excel successfully!')
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error('Failed to export analytics')
+    }
+  }
+
+  const handleExportCSV = () => {
+    if (!quiz || !statistics || students.length === 0) {
+      toast.error('No data to export')
+      return
+    }
+
+    try {
+      // Export detailed attempts as CSV
+      const allAttempts: any[] = []
+      students.forEach(student => {
+        if (student.attempts && student.attempts.length > 0) {
+          student.attempts.forEach((attempt, index) => {
+            allAttempts.push({
+              'Student Name': student.name,
+              'Email': student.email,
+              'College': student.college || '',
+              'Department': student.department || '',
+              'Attempt #': index + 1,
+              'Score': attempt.score,
+              'Percentage (%)': Math.round(attempt.percentage),
+              'Status': attempt.passed ? 'Passed' : 'Failed',
+              'Time Spent (seconds)': attempt.timeSpent,
+              'Submitted At': formatDateForExport(attempt.submittedAt),
+              'Total Attempts': student.totalAttempts,
+              'Best Score (%)': Math.round(student.bestScore),
+              'Average Score (%)': Math.round(student.averageScore),
+              'Passing Score Required': `${quiz.passingScore}%`
+            })
+          })
+        } else {
+          // Include students with no attempts
+          allAttempts.push({
+            'Student Name': student.name,
+            'Email': student.email,
+            'College': student.college || '',
+            'Department': student.department || '',
+            'Attempt #': 'N/A',
+            'Score': '0',
+            'Percentage (%)': '0',
+            'Status': 'No Attempts',
+            'Time Spent (seconds)': '0',
+            'Submitted At': 'N/A',
+            'Total Attempts': student.totalAttempts,
+            'Best Score (%)': Math.round(student.bestScore),
+            'Average Score (%)': Math.round(student.averageScore),
+            'Passing Score Required': `${quiz.passingScore}%`
+          })
+        }
+      })
+
+      const filename = `Quiz_Analytics_${quiz.title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}`
+      exportToCSV(allAttempts.length > 0 ? allAttempts : students.map(student => ({
+        'Student Name': student.name,
+        'Email': student.email,
+        'College': student.college || '',
+        'Department': student.department || '',
+        'Total Attempts': student.totalAttempts,
+        'Best Score (%)': Math.round(student.bestScore),
+        'Average Score (%)': Math.round(student.averageScore),
+        'Status': student.bestScore >= quiz.passingScore ? 'Passed' : 'Not Passed',
+        'Passing Score Required': `${quiz.passingScore}%`
+      })), filename)
+      toast.success('Analytics exported to CSV successfully!')
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error('Failed to export analytics')
+    }
+  }
+
   if (isLoading || authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -202,13 +370,49 @@ const QuizAnalyticsPage: React.FC = () => {
                 <span>Passing: {quiz.passingScore}%</span>
               </div>
             </div>
-            <button
-              onClick={handleGenerateKey}
-              className="btn btn-primary"
-            >
-              <Key className="w-5 h-5 mr-2" />
-              Generate Key
-            </button>
+            <div className="flex gap-3">
+              <div className="relative export-menu-container">
+                <button
+                  className="btn btn-outline"
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  title="Export Analytics"
+                >
+                  <Download className="w-5 h-5 mr-2" />
+                  Export
+                </button>
+                {showExportMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl py-2 z-50 border border-gray-200 animate-fade-in-up">
+                    <button
+                      onClick={() => {
+                        handleExportExcel()
+                        setShowExportMenu(false)
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150 flex items-center gap-2"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                      <span>Export to Excel</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleExportCSV()
+                        setShowExportMenu(false)
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150 flex items-center gap-2"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                      <span>Export to CSV</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleGenerateKey}
+                className="btn btn-primary"
+              >
+                <Key className="w-5 h-5 mr-2" />
+                Generate Key
+              </button>
+            </div>
           </div>
           {selectedQuizKey && (
             <div className="mt-4 bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center justify-between">

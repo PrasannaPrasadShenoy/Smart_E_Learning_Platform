@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Key, Plus, Search, BookOpen, Users, TrendingUp, Award, Eye, Clock, Copy, Check, FileText, History, Calendar, XCircle, Sparkles, Upload, Loader2 } from 'lucide-react'
+import { Key, Plus, Search, BookOpen, Users, TrendingUp, Award, Eye, Clock, Copy, Check, FileText, History, Calendar, XCircle, Sparkles, Upload, Loader2, Edit2 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { api, handleApiError } from '../services/api'
 import toast from 'react-hot-toast'
@@ -233,13 +233,13 @@ const QuizPage: React.FC = () => {
             {activeTab === 'quizzes' ? (
               <>
                 <div className="mb-6 flex justify-end gap-3">
-                <button
-                  onClick={() => navigate('/quiz/create')}
-                  className="btn btn-primary"
-                >
-                  <Plus className="w-5 h-5 mr-2" />
-                  Create New Quiz
-                </button>
+                  <button
+                    onClick={() => navigate('/quiz/create')}
+                    className="btn btn-primary"
+                  >
+                    <Plus className="w-5 h-5 mr-2" />
+                    Create New Quiz
+                  </button>
                 </div>
 
                 {quizzes.length > 0 ? (
@@ -270,24 +270,36 @@ const QuizPage: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                           <div className="text-sm text-gray-600">
                             <span className="flex items-center gap-1">
                               <Users className="w-4 h-4" />
                               {quiz.attemptCount} attempts
                             </span>
                           </div>
-                          <button 
-                            className="btn btn-sm btn-primary"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setSelectedQuiz(quiz)
-                              setShowGenerateKeyModal(true)
-                            }}
-                          >
-                            <Key className="w-4 h-4 mr-1" />
-                            Generate Key
-                          </button>
+                          <div className="flex gap-2">
+                            <button 
+                              className="btn btn-sm btn-outline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                navigate(`/quiz/edit/${quiz.id}`)
+                              }}
+                              title="Edit Quiz"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              className="btn btn-sm btn-primary"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedQuiz(quiz)
+                                setShowGenerateKeyModal(true)
+                              }}
+                            >
+                              <Key className="w-4 h-4 mr-1" />
+                              Generate Key
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}

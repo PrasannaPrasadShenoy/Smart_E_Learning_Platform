@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Users, TrendingUp, Award, BarChart3, Target, Brain, Clock, Eye, Key } from 'lucide-react'
+import { ArrowLeft, Users, TrendingUp, Award, BarChart3, Target, Brain, Clock, Eye, Key, Download, FileSpreadsheet } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { api, handleApiError } from '../services/api'
 import toast from 'react-hot-toast'
 import StudentProgressModal from '../components/StudentProgressModal'
+import { exportToExcel, exportToCSV, exportMultipleSheets, formatDateForExport } from '../utils/exportUtils'
 
 interface Course {
   id: string
@@ -44,6 +45,15 @@ interface Student {
     totalWatchTime: number
     lastUpdated: string
   } | null
+  assessments?: Array<{
+    id: string
+    videoId: string
+    videoTitle: string
+    testScore: number
+    cli: number
+    cliClassification?: string
+    createdAt: string
+  }>
 }
 
 const CourseKeyAnalyticsPage: React.FC = () => {
@@ -57,6 +67,7 @@ const CourseKeyAnalyticsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([])
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [showExportMenu, setShowExportMenu] = useState(false)
 
   useEffect(() => {
     if (location.pathname !== `/teacher/course-keys/${keyId}/analytics`) {
@@ -89,6 +100,20 @@ const CourseKeyAnalyticsPage: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyId, user, location.pathname, authLoading, token])
+
+  // Close export menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showExportMenu && !(event.target as Element).closest('.export-menu-container')) {
+        setShowExportMenu(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showExportMenu])
 
   const fetchAnalytics = async () => {
     if (!keyId) return
@@ -140,18 +165,196 @@ const CourseKeyAnalyticsPage: React.FC = () => {
     ? students.reduce((sum, s) => sum + (s.progress?.completionPercentage || 0), 0) / students.length
     : 0
 
+  const handleExportExcel = () => {
+    if (!courseKey || !course || students.length === 0) {
+      toast.error('No data to export')
+      return
+    }
+
+    try {
+      const sheets = [
+        {
+          name: 'Summary',
+          data: [
+            { Metric: 'Course Title', Value: courseKey.courseTitle },
+            { Metric: 'Course Key', Value: courseKey.key },
+            { Metric: 'Description', Value: courseKey.description || 'N/A' },
+            { Metric: 'Total Videos', Value: course.totalVideos },
+            { Metric: '', Value: '' },
+            { Metric: 'Total Students', Value: totalStudents },
+            { Metric: 'Total Assessments', Value: totalAssessments },
+            { Metric: 'Average Score', Value: `${Math.round(avgScore)}%` },
+            { Metric: 'Average CLI', Value: Math.round(avgCLI) },
+            { Metric: 'Average Completion', Value: `${Math.round(avgCompletion)}%` }
+          ]
+        },
+        {
+          name: 'Students Summary',
+          data: students.map(student => ({
+            'Student Name': student.name,
+            'Email': student.email,
+            'College': student.college || '',
+            'Department': student.department || '',
+            'Total Assessments': student.stats.totalAssessments,
+            'Average Score (%)': student.stats.averageScore.toFixed(1),
+            'Average CLI': student.stats.averageCLI.toFixed(1),
+            'Completion (%)': student.progress ? student.progress.completionPercentage.toFixed(1) : '0',
+            'Completed Videos': student.progress ? student.progress.completedVideos : 0,
+            'Total Videos': student.progress ? student.progress.totalVideos : 0,
+            'Average Test Score': student.progress ? student.progress.averageTestScore.toFixed(1) : '0'
+          }))
+        }
+      ]
+
+      // Add detailed student assessments if available
+      const allAssessments: any[] = []
+      students.forEach(student => {
+        if (student.assessments && student.assessments.length > 0) {
+          student.assessments.forEach(assessment => {
+            allAssessments.push({
+              'Student Name': student.name,
+              'Email': student.email,
+              'College': student.college || '',
+              'Department': student.department || '',
+              'Video Title': assessment.videoTitle,
+              'Video ID': assessment.videoId,
+              'Test Score (%)': assessment.testScore ? assessment.testScore.toFixed(1) : '0',
+              'CLI': assessment.cli ? assessment.cli.toFixed(1) : '0',
+              'CLI Classification': assessment.cliClassification || 'N/A',
+              'Assessment Date': formatDateForExport(assessment.createdAt)
+            })
+          })
+        }
+      })
+
+      if (allAssessments.length > 0) {
+        sheets.push({
+          name: 'Student Assessments',
+          data: allAssessments
+        })
+      }
+
+      const filename = `CourseKey_Analytics_${courseKey.key}_${courseKey.courseTitle.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}`
+      exportMultipleSheets(sheets, filename)
+      toast.success('Analytics exported to Excel successfully!')
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error('Failed to export analytics')
+    }
+  }
+
+  const handleExportCSV = () => {
+    if (!courseKey || !course || students.length === 0) {
+      toast.error('No data to export')
+      return
+    }
+
+    try {
+      // Export detailed student assessments as CSV
+      const allAssessments: any[] = []
+      students.forEach(student => {
+        if (student.assessments && student.assessments.length > 0) {
+          student.assessments.forEach(assessment => {
+            allAssessments.push({
+              'Student Name': student.name,
+              'Email': student.email,
+              'College': student.college || '',
+              'Department': student.department || '',
+              'Video Title': assessment.videoTitle,
+              'Test Score (%)': assessment.testScore ? assessment.testScore.toFixed(1) : '0',
+              'CLI': assessment.cli ? assessment.cli.toFixed(1) : '0',
+              'CLI Classification': assessment.cliClassification || 'N/A',
+              'Assessment Date': formatDateForExport(assessment.createdAt),
+              'Total Assessments': student.stats.totalAssessments,
+              'Average Score (%)': student.stats.averageScore.toFixed(1),
+              'Completion (%)': student.progress ? student.progress.completionPercentage.toFixed(1) : '0'
+            })
+          })
+        } else {
+          // Include students with no assessments but with progress
+          allAssessments.push({
+            'Student Name': student.name,
+            'Email': student.email,
+            'College': student.college || '',
+            'Department': student.department || '',
+            'Video Title': 'N/A',
+            'Test Score (%)': '0',
+            'CLI': '0',
+            'CLI Classification': 'N/A',
+            'Assessment Date': 'N/A',
+            'Total Assessments': student.stats.totalAssessments,
+            'Average Score (%)': student.stats.averageScore.toFixed(1),
+            'Completion (%)': student.progress ? student.progress.completionPercentage.toFixed(1) : '0'
+          })
+        }
+      })
+
+      const filename = `CourseKey_Analytics_${courseKey.key}_${courseKey.courseTitle.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}`
+      exportToCSV(allAssessments.length > 0 ? allAssessments : students.map(student => ({
+        'Student Name': student.name,
+        'Email': student.email,
+        'College': student.college || '',
+        'Department': student.department || '',
+        'Total Assessments': student.stats.totalAssessments,
+        'Average Score (%)': student.stats.averageScore.toFixed(1),
+        'Average CLI': student.stats.averageCLI.toFixed(1),
+        'Completion (%)': student.progress ? student.progress.completionPercentage.toFixed(1) : '0'
+      })), filename)
+      toast.success('Analytics exported to CSV successfully!')
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error('Failed to export analytics')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <button
-            onClick={() => navigate('/teacher/dashboard')}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </button>
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => navigate('/teacher/dashboard')}
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              Back to Dashboard
+            </button>
+            <div className="relative export-menu-container">
+              <button
+                className="btn btn-outline flex items-center gap-2"
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                title="Export Analytics"
+              >
+                <Download className="w-5 h-5" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl py-2 z-50 border border-gray-200 animate-fade-in-up">
+                  <button
+                    onClick={() => {
+                      handleExportExcel()
+                      setShowExportMenu(false)
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150 flex items-center gap-2"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                    <span>Export to Excel</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleExportCSV()
+                      setShowExportMenu(false)
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150 flex items-center gap-2"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                    <span>Export to CSV</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-3 mb-2">

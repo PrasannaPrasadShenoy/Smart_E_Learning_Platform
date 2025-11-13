@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Plus, X, Save, Trash2, Upload, FileText, Loader2, Sparkles, Check, XCircle } from 'lucide-react'
+import { ArrowLeft, Plus, X, Save, Trash2, Upload, FileText, Loader2, Sparkles, Check, XCircle, Calendar, Clock } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { api, handleApiError } from '../services/api'
 import toast from 'react-hot-toast'
@@ -24,6 +24,9 @@ const CreateQuizPage: React.FC = () => {
   const [passingScore, setPassingScore] = useState(60)
   const [allowMultipleAttempts, setAllowMultipleAttempts] = useState(false)
   const [showResults, setShowResults] = useState(true)
+  const [enableScheduling, setEnableScheduling] = useState(false)
+  const [scheduledStartTime, setScheduledStartTime] = useState('')
+  const [scheduledEndTime, setScheduledEndTime] = useState('')
   const [questions, setQuestions] = useState<Question[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [isUploadingPDF, setIsUploadingPDF] = useState(false)
@@ -64,24 +67,32 @@ const CreateQuizPage: React.FC = () => {
     }
   }, [questions])
 
-  // Load draft quiz from database if quizId is in URL params or location state
+  // Load quiz from database if quizId is in URL params or location state (for editing)
   useEffect(() => {
-    const loadDraftQuiz = async () => {
-      const quizId = new URLSearchParams(location.search).get('quizId') || location.state?.quizId
+    const loadQuiz = async () => {
+      // Check if we're editing (quizId in URL path or search params)
+      const pathQuizId = location.pathname.split('/quiz/edit/')[1]?.split('/')[0]
+      const quizId = pathQuizId || new URLSearchParams(location.search).get('quizId') || location.state?.quizId
+      
       if (quizId && token) {
         try {
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`
           const response = await api.get(`/quiz/${quizId}`)
           const quiz = response.data.data.quiz
           
-          if (quiz && quiz.isDraft) {
+          if (quiz) {
             setDraftQuizId(quizId)
-            setTitle(quiz.title.replace('Draft: ', ''))
-            setDescription(quiz.description.replace('Auto-generated quiz based on: ', ''))
+            // Remove "Draft: " prefix if present, otherwise use title as-is
+            setTitle(quiz.title.replace(/^Draft:\s*/i, ''))
+            setDescription(quiz.description.replace(/^Auto-generated quiz based on:\s*/i, ''))
             setTimeLimit(quiz.timeLimit || 0)
             setPassingScore(quiz.passingScore || 60)
             setAllowMultipleAttempts(quiz.allowMultipleAttempts || false)
             setShowResults(quiz.showResults !== undefined ? quiz.showResults : true)
+            const hasScheduled = !!(quiz.scheduledStartTime || quiz.scheduledEndTime)
+            setEnableScheduling(hasScheduled)
+            setScheduledStartTime(quiz.scheduledStartTime ? new Date(quiz.scheduledStartTime).toISOString().slice(0, 16) : '')
+            setScheduledEndTime(quiz.scheduledEndTime ? new Date(quiz.scheduledEndTime).toISOString().slice(0, 16) : '')
             
             // Format questions properly
             const formattedQuestions = (quiz.questions || []).map((q: any) => ({
@@ -97,18 +108,21 @@ const CreateQuizPage: React.FC = () => {
             }))
             
             setQuestions(formattedQuestions)
-            toast.success(`Loaded draft quiz with ${formattedQuestions.length} questions!`)
+            toast.success(`Loaded quiz with ${formattedQuestions.length} questions!`)
           }
         } catch (error) {
-          console.error('Error loading draft quiz:', error)
+          console.error('Error loading quiz:', error)
+          handleApiError(error)
+          navigate('/quiz')
         }
       }
     }
     
     if (user && token) {
-      loadDraftQuiz()
+      loadQuiz()
     }
-  }, [location.search, location.state, user, token])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, location.search, location.state, user, token])
 
   const addQuestion = () => {
     setQuestions([
@@ -356,7 +370,17 @@ const CreateQuizPage: React.FC = () => {
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`
       }
 
-      // If it's a draft quiz, update it instead of creating new
+      // Validate scheduled times if both are provided
+      if (scheduledStartTime && scheduledEndTime) {
+        const startTime = new Date(scheduledStartTime)
+        const endTime = new Date(scheduledEndTime)
+        if (endTime <= startTime) {
+          toast.error('End time must be after start time')
+          return
+        }
+      }
+
+      // If it's an existing quiz (draft or published), update it instead of creating new
       if (draftQuizId) {
         const response = await api.put(`/quiz/${draftQuizId}`, {
           title,
@@ -366,10 +390,12 @@ const CreateQuizPage: React.FC = () => {
           passingScore,
           allowMultipleAttempts,
           showResults,
-          isDraft: false,
+          scheduledStartTime: enableScheduling ? (scheduledStartTime || null) : null,
+          scheduledEndTime: enableScheduling ? (scheduledEndTime || null) : null,
+          isDraft: false, // Always publish when saving
           isActive: true
         })
-        toast.success('Quiz updated and published successfully!')
+        toast.success('Quiz updated successfully!')
         navigate('/quiz')
       } else {
         // Create new quiz
@@ -380,7 +406,9 @@ const CreateQuizPage: React.FC = () => {
           timeLimit,
           passingScore,
           allowMultipleAttempts,
-          showResults
+          showResults,
+          scheduledStartTime: scheduledStartTime || null,
+          scheduledEndTime: scheduledEndTime || null
         })
         toast.success('Quiz created successfully!')
         navigate('/quiz')
@@ -404,7 +432,9 @@ const CreateQuizPage: React.FC = () => {
           Back to Quizzes
         </button>
 
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Create New Quiz</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">
+          {draftQuizId ? 'Edit Quiz' : 'Create New Quiz'}
+        </h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Info */}
@@ -463,6 +493,74 @@ const CreateQuizPage: React.FC = () => {
                   />
                 </div>
               </div>
+              
+              {/* Schedule Quiz Section */}
+              <div className="border-t border-gray-200 pt-4 mt-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-primary-600" />
+                    <h3 className="text-sm font-semibold text-gray-900">Schedule Quiz (Optional)</h3>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={enableScheduling}
+                      onChange={(e) => {
+                        setEnableScheduling(e.target.checked)
+                        if (!e.target.checked) {
+                          setScheduledStartTime('')
+                          setScheduledEndTime('')
+                        }
+                      }}
+                      className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-700">Enable Scheduling</span>
+                  </label>
+                </div>
+                {enableScheduling && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <Clock className="w-4 h-4 inline mr-1" />
+                          Start Time
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={scheduledStartTime}
+                          onChange={(e) => setScheduledStartTime(e.target.value)}
+                          className="input w-full"
+                          min={new Date().toISOString().slice(0, 16)}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Quiz will be available from this time</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <Clock className="w-4 h-4 inline mr-1" />
+                          End Time
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={scheduledEndTime}
+                          onChange={(e) => setScheduledEndTime(e.target.value)}
+                          className="input w-full"
+                          min={scheduledStartTime || new Date().toISOString().slice(0, 16)}
+                          disabled={!enableScheduling}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Quiz will stop being available after this time</p>
+                      </div>
+                    </div>
+                    {(scheduledStartTime || scheduledEndTime) && (
+                      <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-800">
+                          <strong>Note:</strong> Students will only be able to access the quiz between the scheduled times (if set).
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
               <div className="flex gap-6">
                 <label className="flex items-center gap-2">
                   <input
@@ -773,7 +871,7 @@ Points: 2`}</pre>
               ) : (
                 <>
                   <Save className="w-4 h-4 mr-2" />
-                  Create Quiz
+                  {draftQuizId ? 'Update Quiz' : 'Create Quiz'}
                 </>
               )}
             </button>

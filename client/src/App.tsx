@@ -31,6 +31,9 @@ import QuizAnalyticsPage from './pages/QuizAnalyticsPage'
 import QuizHistoryPage from './pages/QuizHistoryPage'
 import QuizAttemptDetailsPage from './pages/QuizAttemptDetailsPage'
 import QuizTerminatedPage from './pages/QuizTerminatedPage'
+import ClassroomPage from './pages/ClassroomPage'
+import JoinClassroomPage from './pages/JoinClassroomPage'
+import ClassroomViewPage from './pages/ClassroomViewPage'
 
 // Components
 import Navbar from './components/Navbar'
@@ -58,14 +61,29 @@ function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
         <Toaster 
           position="top-right"
           toastOptions={{
             duration: 4000,
             style: {
-              background: '#363636',
+              background: '#1f2937',
               color: '#fff',
+              borderRadius: '0.75rem',
+              padding: '16px',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+            },
+            success: {
+              iconTheme: {
+                primary: '#22c55e',
+                secondary: '#fff',
+              },
+            },
+            error: {
+              iconTheme: {
+                primary: '#ef4444',
+                secondary: '#fff',
+              },
             },
           }}
         />
@@ -170,6 +188,10 @@ function App() {
               element={user && (user.role === 'instructor' || user.role === 'admin') ? <CreateQuizPage /> : <Navigate to="/quiz" replace />} 
             />
             <Route 
+              path="/quiz/edit/:quizId" 
+              element={user && (user.role === 'instructor' || user.role === 'admin') ? <CreateQuizPage /> : <Navigate to="/quiz" replace />} 
+            />
+            <Route 
               path="/quiz/take/:quizId" 
               element={user ? <TakeQuizPage /> : <Navigate to="/student/login" replace />} 
             />
@@ -184,6 +206,20 @@ function App() {
             <Route 
               path="/quiz/terminated" 
               element={<QuizTerminatedPage />} 
+            />
+            
+            {/* Classroom routes */}
+            <Route 
+              path="/classrooms" 
+              element={user && (user.role === 'instructor' || user.role === 'admin') ? <ClassroomPage /> : <Navigate to="/classrooms/join" replace />} 
+            />
+            <Route 
+              path="/classrooms/join" 
+              element={user ? <JoinClassroomPage /> : <Navigate to="/student/login" replace />} 
+            />
+            <Route 
+              path="/classrooms/:id" 
+              element={user ? <ClassroomViewPage /> : <Navigate to="/student/login" replace />} 
             />
             
             {/* Teacher routes */}

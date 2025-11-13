@@ -254,96 +254,106 @@ const DashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
-        <p className="text-gray-600">
+      <div className="mb-10">
+        <h1 className="text-4xl font-bold text-gray-900 mb-3 bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+          Dashboard
+        </h1>
+        <p className="text-lg text-gray-600">
           Track your learning progress and cognitive performance
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="card">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+        <div className="card-elevated group hover:scale-[1.02] transition-transform duration-300">
           <div className="card-content">
-            <div className="flex items-center">
-              <div className="p-2 bg-primary-100 rounded-lg">
-                <BarChart3 className="h-6 w-6 text-primary-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Assessments</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {assessments.length}
-                </p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="p-3 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg group-hover:shadow-xl transition-shadow duration-300">
+                  <BarChart3 className="h-6 w-6 text-white" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Total Assessments</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {assessments.length}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="card-elevated group hover:scale-[1.02] transition-transform duration-300">
           <div className="card-content">
-            <div className="flex items-center">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <Target className="h-6 w-6 text-green-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Average Score</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {assessments.length > 0 
-                    ? Math.round(assessments.reduce((sum, a) => sum + (a.testScore || 0), 0) / assessments.length) || 0
-                    : 0
-                  }%
-                </p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="p-3 bg-gradient-to-br from-success-500 to-success-600 rounded-xl shadow-lg group-hover:shadow-xl transition-shadow duration-300">
+                  <Target className="h-6 w-6 text-white" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Average Score</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {assessments.length > 0 
+                      ? Math.round(assessments.reduce((sum, a) => sum + (a.testScore || 0), 0) / assessments.length) || 0
+                      : 0
+                    }%
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="card-elevated group hover:scale-[1.02] transition-transform duration-300">
           <div className="card-content">
-            <div className="flex items-center">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <Brain className="h-6 w-6 text-yellow-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Average CLI</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {assessments.length > 0 
-                    ? Math.round(assessments.reduce((sum, a) => sum + (a.cli || 0), 0) / assessments.length) || 0
-                    : 0
-                  }
-                </p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="p-3 bg-gradient-to-br from-warning-500 to-warning-600 rounded-xl shadow-lg group-hover:shadow-xl transition-shadow duration-300">
+                  <Brain className="h-6 w-6 text-white" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Average CLI</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {assessments.length > 0 
+                      ? Math.round(assessments.reduce((sum, a) => sum + (a.cli || 0), 0) / assessments.length) || 0
+                      : 0
+                    }
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="card-elevated group hover:scale-[1.02] transition-transform duration-300">
           <div className="card-content">
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <TrendingUp className="h-6 w-6 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Improvement</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {insights?.trends?.improvement !== undefined && !isNaN(insights.trends.improvement) ? 
-                    `${insights.trends.improvement > 0 ? '+' : ''}${Math.round(insights.trends.improvement)}`
-                    : '0'
-                  }
-                </p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="p-3 bg-gradient-to-br from-primary-400 to-blue-500 rounded-xl shadow-lg group-hover:shadow-xl transition-shadow duration-300">
+                  <TrendingUp className="h-6 w-6 text-white" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Improvement</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {insights?.trends?.improvement !== undefined && !isNaN(insights.trends.improvement) ? 
+                      `${insights.trends.improvement > 0 ? '+' : ''}${Math.round(insights.trends.improvement)}`
+                      : '0'
+                    }
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
         {/* Performance Chart */}
-        <div className="card">
+        <div className="card-elevated">
           <div className="card-header">
-            <h3 className="card-title">Performance Trends</h3>
+            <h3 className="card-title text-xl">Performance Trends</h3>
             <p className="card-description">
               Your test scores and cognitive load over time
             </p>
@@ -355,7 +365,7 @@ const DashboardPage: React.FC = () => {
               <div className="flex items-center justify-center h-64 text-gray-500">
                 <div className="text-center">
                   <BarChart3 className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                  <p>No assessment data available</p>
+                  <p className="text-gray-600">No assessment data available</p>
                 </div>
               </div>
             )}
@@ -363,9 +373,9 @@ const DashboardPage: React.FC = () => {
         </div>
 
         {/* CLI Distribution */}
-        <div className="card">
+        <div className="card-elevated">
           <div className="card-header">
-            <h3 className="card-title">Cognitive Load Distribution</h3>
+            <h3 className="card-title text-xl">Cognitive Load Distribution</h3>
             <p className="card-description">
               Distribution of your cognitive load levels
             </p>
@@ -377,7 +387,7 @@ const DashboardPage: React.FC = () => {
               <div className="flex items-center justify-center h-64 text-gray-500">
                 <div className="text-center">
                   <Brain className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                  <p>No cognitive data available</p>
+                  <p className="text-gray-600">No cognitive data available</p>
                 </div>
               </div>
             )}
@@ -386,53 +396,55 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {/* Recent Assessments */}
-      <div className="card mb-8">
+      <div className="card-elevated mb-10">
         <div className="card-header">
-          <h3 className="card-title">Recent Assessments</h3>
+          <h3 className="card-title text-xl">Recent Assessments</h3>
           <p className="card-description">
             Your latest learning assessments and results
           </p>
         </div>
         <div className="card-content">
           {assessments.length > 0 ? (
-            <div className="space-y-4">
-              {assessments.slice(0, 5).map((assessment) => (
+            <div className="space-y-3">
+              {assessments.slice(0, 5).map((assessment, index) => (
                 <div
                   key={assessment.id}
-                  className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex items-center p-5 border-2 border-gray-100 rounded-xl hover:border-primary-200 hover:shadow-md bg-white transition-all duration-300 group"
+                  style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <img
                     src={assessment.course.thumbnail}
                     alt={assessment.course.title}
-                    className="w-16 h-12 object-cover rounded-lg mr-4"
+                    className="w-20 h-14 object-cover rounded-lg mr-5 shadow-sm group-hover:shadow-md transition-shadow duration-300"
                   />
-                  <div className="flex-1">
-                    <h4 className="font-medium text-gray-900 line-clamp-1">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-gray-900 line-clamp-1 mb-1">
                       {assessment.testName || assessment.course.title}
                     </h4>
-                    <p className="text-sm text-gray-600 line-clamp-1">
+                    <p className="text-sm text-gray-600 line-clamp-1 mb-2">
                       {assessment.videoTitle || assessment.course.title}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
                       {new Date(assessment.createdAt).toLocaleDateString()}
                     </p>
                   </div>
-                  <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-6">
                     <div className="text-center">
-                      <p className="text-sm text-gray-600">Score</p>
-                      <p className={`font-bold ${getScoreColor(assessment.testScore || 0)}`}>
+                      <p className="text-xs font-medium text-gray-600 mb-1">Score</p>
+                      <p className={`text-xl font-bold ${getScoreColor(assessment.testScore || 0)}`}>
                         {assessment.testScore !== undefined && !isNaN(assessment.testScore) ? assessment.testScore : 0}%
                       </p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm text-gray-600">CLI</p>
-                      <p className={`font-bold ${getCLIColor(assessment.cli || 0)}`}>
+                      <p className="text-xs font-medium text-gray-600 mb-1">CLI</p>
+                      <p className={`text-xl font-bold ${getCLIColor(assessment.cli || 0)}`}>
                         {assessment.cli !== undefined && !isNaN(assessment.cli) ? Math.round(assessment.cli) : 0}
                       </p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm text-gray-600">Load</p>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCLIClassificationColor(assessment.cliClassification)}`}>
+                      <p className="text-xs font-medium text-gray-600 mb-1">Load</p>
+                      <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${getCLIClassificationColor(assessment.cliClassification)}`}>
                         {assessment.cliClassification}
                       </span>
                     </div>
@@ -441,17 +453,19 @@ const DashboardPage: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12">
-              <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <div className="text-center py-16">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-6">
+                <BookOpen className="h-10 w-10 text-gray-400" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
                 No assessments yet
               </h3>
-              <p className="text-gray-600 mb-4">
+              <p className="text-gray-600 mb-6 max-w-md mx-auto">
                 Start your learning journey by taking an assessment
               </p>
               <button
                 onClick={() => navigate('/search')}
-                className="btn btn-primary"
+                className="btn btn-primary btn-lg"
               >
                 <BookOpen className="h-5 w-5 mr-2" />
                 Find Courses
@@ -463,30 +477,33 @@ const DashboardPage: React.FC = () => {
 
       {/* Insights */}
       {insights && insights.insights && insights.insights.length > 0 ? (
-        <div className="card">
+        <div className="card-elevated">
           <div className="card-header">
-            <h3 className="card-title">Learning Insights</h3>
+            <h3 className="card-title text-xl">Learning Insights</h3>
             <p className="card-description">
               AI-generated insights about your learning patterns
             </p>
           </div>
           <div className="card-content">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               {insights.insights.map((insight, index) => (
-                <div key={index} className="p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-700">{insight.message}</p>
+                <div key={index} className="p-5 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 hover:border-primary-200 hover:shadow-md transition-all duration-300">
+                  <p className="text-sm text-gray-700 leading-relaxed">{insight.message}</p>
                 </div>
               ))}
             </div>
             
             {insights?.trends?.recommendations && insights.trends.recommendations.length > 0 && (
-              <div className="mt-6">
-                <h4 className="font-medium text-gray-900 mb-3">Recommendations</h4>
-                <ul className="space-y-2">
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <ArrowRight className="w-5 h-5 text-primary-600" />
+                  Recommendations
+                </h4>
+                <ul className="space-y-3">
                   {insights.trends.recommendations.map((recommendation, index) => (
-                    <li key={index} className="flex items-start">
-                      <span className="text-primary-600 mr-2">•</span>
-                      <span className="text-sm text-gray-700">{recommendation}</span>
+                    <li key={index} className="flex items-start gap-3 p-3 bg-primary-50 rounded-lg">
+                      <span className="text-primary-600 font-bold mt-0.5">•</span>
+                      <span className="text-sm text-gray-700 flex-1">{recommendation}</span>
                     </li>
                   ))}
                 </ul>
@@ -495,18 +512,20 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="card">
+        <div className="card-elevated">
           <div className="card-header">
-            <h3 className="card-title">Learning Insights</h3>
+            <h3 className="card-title text-xl">Learning Insights</h3>
             <p className="card-description">
               Complete some assessments to see your learning insights
             </p>
           </div>
           <div className="card-content">
-            <div className="text-center py-8">
-              <Brain className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No insights available yet</p>
-              <p className="text-sm text-gray-500 mt-2">
+            <div className="text-center py-12">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-6">
+                <Brain className="h-10 w-10 text-gray-400" />
+              </div>
+              <p className="text-gray-700 font-medium mb-2">No insights available yet</p>
+              <p className="text-sm text-gray-500">
                 Take some assessments to generate personalized insights
               </p>
             </div>
