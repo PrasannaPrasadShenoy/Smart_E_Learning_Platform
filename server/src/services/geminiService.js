@@ -13,7 +13,7 @@ class GeminiService {
     }
   }
 
-  // Generate short notes (concise) - multilingual support
+  // Generate short notes (concise) - multilingual support with retry logic
   async generateShortNotes(transcript, sourceLanguage = 'en') {
     if (!this.model) {
       throw new Error('Gemini API key not configured');
@@ -39,17 +39,40 @@ Requirements:
 
 Format as clean bullet points. Keep it simple and easy to scan.`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      // Use generateContent method which has retry logic built-in
+      // Extended timeout for large transcripts
+      const transcriptLength = transcript.length;
+      let timeout = 180000; // Default 3 minutes
+      
+      if (transcriptLength > 50000) {
+        timeout = 300000; // 5 minutes for very large transcripts
+      } else if (transcriptLength > 20000) {
+        timeout = 240000; // 4 minutes for large transcripts
+      }
+
+      return await this.generateContent(prompt, { timeout, maxRetries: 3 });
     } catch (error) {
       console.error('Gemini API error for short notes:', error);
-      throw new Error('Failed to generate short notes');
+      
+      // Handle specific error messages
+      if (error.message && (
+        error.message.includes('overloaded') ||
+        error.message.includes('503') ||
+        error.message.includes('Service Unavailable')
+      )) {
+        throw new Error('The AI service is currently overloaded. Please try again in a few moments.');
+      }
+      
+      throw new Error(`Failed to generate short notes: ${error.message || 'Unknown error'}`);
     }
   }
 
-  // Generate detailed notes (enhanced with 30% extra content)
+  // Generate detailed notes (enhanced with 30% extra content) with retry logic
   async generateDetailedNotes(transcript) {
+    if (!this.model) {
+      throw new Error('Gemini API key not configured');
+    }
+    
     try {
       const prompt = `Create detailed notes from this video transcript. Include:
 1. Main content from the video
@@ -61,12 +84,31 @@ Transcript: ${transcript}
 
 Format as structured notes with clear sections. Make it comprehensive and educational.`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      // Use generateContent method which has retry logic built-in
+      // Extended timeout for large transcripts (detailed notes take longer)
+      const transcriptLength = transcript.length;
+      let timeout = 240000; // Default 4 minutes for detailed notes
+      
+      if (transcriptLength > 50000) {
+        timeout = 360000; // 6 minutes for very large transcripts
+      } else if (transcriptLength > 20000) {
+        timeout = 300000; // 5 minutes for large transcripts
+      }
+
+      return await this.generateContent(prompt, { timeout, maxRetries: 3 });
     } catch (error) {
       console.error('Gemini API error for detailed notes:', error);
-      throw new Error('Failed to generate detailed notes');
+      
+      // Handle specific error messages
+      if (error.message && (
+        error.message.includes('overloaded') ||
+        error.message.includes('503') ||
+        error.message.includes('Service Unavailable')
+      )) {
+        throw new Error('The AI service is currently overloaded. Please try again in a few moments.');
+      }
+      
+      throw new Error(`Failed to generate detailed notes: ${error.message || 'Unknown error'}`);
     }
   }
 
@@ -536,7 +578,7 @@ Format as JSON with this structure:
     };
   }
 
-  // Summarize transcript using Gemini (multilingual support)
+  // Summarize transcript using Gemini (multilingual support) with retry logic
   async summarizeTranscript(transcript, sourceLanguage = 'en') {
     if (!this.model) {
       throw new Error('Gemini API key not configured');
@@ -561,62 +603,152 @@ Provide a summary that:
 
 Keep it under 200 words.`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      // Use generateContent method which has retry logic built-in
+      const transcriptLength = transcript.length;
+      let timeout = 120000; // Default 2 minutes
+      
+      if (transcriptLength > 50000) {
+        timeout = 240000; // 4 minutes for very large transcripts
+      } else if (transcriptLength > 20000) {
+        timeout = 180000; // 3 minutes for large transcripts
+      }
+
+      return await this.generateContent(prompt, { timeout, maxRetries: 3 });
     } catch (error) {
       console.error('Gemini summarization error:', error);
-      throw new Error('Failed to summarize transcript with Gemini');
+      
+      // Handle specific error messages
+      if (error.message && (
+        error.message.includes('overloaded') ||
+        error.message.includes('503') ||
+        error.message.includes('Service Unavailable')
+      )) {
+        throw new Error('The AI service is currently overloaded. Please try again in a few moments.');
+      }
+      
+      throw new Error(`Failed to summarize transcript: ${error.message || 'Unknown error'}`);
     }
   }
 
-  // Generic content generation method with extended timeout for large prompts
+  // Helper method to check if error is retryable (503, 429, network errors)
+  isRetryableError(error) {
+    if (!error || !error.message) return false;
+    
+    const message = error.message.toLowerCase();
+    const errorString = error.toString().toLowerCase();
+    
+    // 503 Service Unavailable / Model Overloaded
+    if (message.includes('503') || message.includes('service unavailable') || 
+        message.includes('overloaded') || message.includes('try again later')) {
+      return true;
+    }
+    
+    // 429 Rate Limit (can retry with backoff)
+    if (message.includes('429') || message.includes('rate limit') || 
+        message.includes('too many requests')) {
+      return true;
+    }
+    
+    // Network errors (transient)
+    if (message.includes('fetch failed') || message.includes('econnrefused') || 
+        message.includes('enotfound') || message.includes('etimedout') ||
+        message.includes('network error') || message.includes('econnreset')) {
+      return true;
+    }
+    
+    // Check error string as well
+    if (errorString.includes('503') || errorString.includes('overloaded')) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  // Helper method to sleep/delay
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Generic content generation method with extended timeout and retry logic for large prompts
   async generateContent(prompt, options = {}) {
     if (!this.model) {
       throw new Error('Gemini API key not configured');
     }
     
-    const { timeout = 120000 } = options; // Default 2 minutes, can be extended for large prompts
+    const { timeout = 120000, maxRetries = 3 } = options; // Default 2 minutes, 3 retries
+    let lastError;
     
-    try {
-      // For large prompts, use Promise.race with timeout
-      const generatePromise = this.model.generateContent(prompt);
-      
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`Request timeout after ${timeout}ms. The prompt may be too large or the API is slow.`));
-        }, timeout);
-      });
-      
-      const result = await Promise.race([generatePromise, timeoutPromise]);
-      const response = await result.response;
-      return response.text();
-    } catch (error) {
-      console.error('Gemini API error for content generation:', error);
-      
-      // Handle timeout errors
-      if (error.message && error.message.includes('timeout')) {
-        throw new Error(`Request took too long (${timeout}ms). For very large prompts, this is normal. Please try again or simplify your question.`);
+    // Retry loop with exponential backoff
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        // For large prompts, use Promise.race with timeout
+        const generatePromise = this.model.generateContent(prompt);
+        
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Request timeout after ${timeout}ms. The prompt may be too large or the API is slow.`));
+          }, timeout);
+        });
+        
+        const result = await Promise.race([generatePromise, timeoutPromise]);
+        const response = await result.response;
+        return response.text();
+      } catch (error) {
+        lastError = error;
+        console.error(`Gemini API error for content generation (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
+        
+        // Check if error is retryable
+        const isRetryable = this.isRetryableError(error);
+        
+        // If not retryable or max retries reached, handle error
+        if (!isRetryable || attempt >= maxRetries) {
+          break;
+        }
+        
+        // Calculate exponential backoff delay: 1s, 2s, 4s, etc.
+        const delayMs = Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10 seconds
+        console.log(`⚠️ Retryable error detected. Retrying in ${delayMs/1000}s... (attempt ${attempt + 1}/${maxRetries + 1})`);
+        
+        // Wait before retrying
+        await this.sleep(delayMs);
       }
-      
-      // Handle network errors
-      if (error.message && (error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND') || error.message.includes('ETIMEDOUT'))) {
-        throw new Error('Network error: Unable to connect to Gemini API. Please check your internet connection and try again.');
-      }
-      
-      // Handle API key errors
-      if (error.message && (error.message.includes('API_KEY_INVALID') || error.message.includes('401') || error.message.includes('403'))) {
-        throw new Error('Invalid Gemini API key. Please check your GEMINI_API_KEY in environment variables.');
-      }
-      
-      // Handle quota/rate limit errors
-      if (error.message && (error.message.includes('quota') || error.message.includes('429') || error.message.includes('rate limit'))) {
-        throw new Error('Gemini API quota exceeded or rate limit reached. Please try again later.');
-      }
-      
-      // Generic error
-      throw new Error(`Failed to generate content: ${error.message || 'Unknown error'}`);
     }
+    
+    // All retries exhausted or non-retryable error - handle final error
+    console.error('Gemini API error for content generation (final):', lastError);
+    
+    // Handle timeout errors
+    if (lastError.message && lastError.message.includes('timeout')) {
+      throw new Error(`Request took too long (${timeout}ms). For very large prompts, this is normal. Please try again or simplify your question.`);
+    }
+    
+    // Handle 503 Service Unavailable / Model Overloaded
+    if (lastError.message && (
+      lastError.message.includes('503') || 
+      lastError.message.includes('Service Unavailable') ||
+      lastError.message.includes('overloaded') ||
+      lastError.message.includes('try again later')
+    )) {
+      throw new Error('The AI service is currently overloaded. Please try again in a few moments.');
+    }
+    
+    // Handle network errors
+    if (lastError.message && (lastError.message.includes('fetch failed') || lastError.message.includes('ECONNREFUSED') || lastError.message.includes('ENOTFOUND') || lastError.message.includes('ETIMEDOUT'))) {
+      throw new Error('Network error: Unable to connect to Gemini API. Please check your internet connection and try again.');
+    }
+    
+    // Handle API key errors
+    if (lastError.message && (lastError.message.includes('API_KEY_INVALID') || lastError.message.includes('401') || lastError.message.includes('403'))) {
+      throw new Error('Invalid Gemini API key. Please check your GEMINI_API_KEY in environment variables.');
+    }
+    
+    // Handle quota/rate limit errors
+    if (lastError.message && (lastError.message.includes('quota') || lastError.message.includes('429') || lastError.message.includes('rate limit'))) {
+      throw new Error('Gemini API quota exceeded or rate limit reached. Please try again later.');
+    }
+    
+    // Generic error
+    throw new Error(`Failed to generate content: ${lastError.message || 'Unknown error'}`);
   }
 
   /**

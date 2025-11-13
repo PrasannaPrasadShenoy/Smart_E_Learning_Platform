@@ -50,7 +50,7 @@ const quizKeySchema = new mongoose.Schema({
 });
 
 // Indexes for performance
-quizKeySchema.index({ key: 1 }, { unique: true });
+// Note: 'key' index is automatically created by unique: true in field definition
 quizKeySchema.index({ quizId: 1 });
 quizKeySchema.index({ teacherId: 1 });
 quizKeySchema.index({ isActive: 1, expiresAt: 1 });

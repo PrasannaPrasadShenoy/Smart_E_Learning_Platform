@@ -117,6 +117,12 @@ Thumbs.db
 .temp/
 
 # =========================
+# Uploaded Files
+# =========================
+**/uploads/
+server/uploads/
+
+# =========================
 # Miscellaneous
 # =========================
 # Local build artifacts, lockfiles, etc.

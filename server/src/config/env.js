@@ -10,6 +10,9 @@ const config = {
   assemblyaiApiKey: process.env.ASSEMBLYAI_API_KEY,
   youtubeApiKey: process.env.YOUTUBE_DATA_API_KEY,
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
+  // Rate limiting configuration
+  rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes default
+  rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX) || 500, // 500 requests per window default
 };
 
 // Validate required environment variables

@@ -44,13 +44,27 @@ class NotesService {
       console.log(`🌐 Transcript language: ${transcriptData.language}`);
       console.log(`📊 Transcript source: ${transcriptData.source}`);
 
-      // Step 2: Generate short notes
+      // Step 2: Generate short notes (with retry logic built-in)
       console.log('📝 Step 2: Generating short notes...');
-      const shortNotes = await this.generateShortNotes(transcriptData.transcript, videoData);
+      let shortNotes;
+      try {
+        shortNotes = await this.generateShortNotes(transcriptData.transcript, videoData);
+      } catch (error) {
+        console.error('❌ Error generating short notes:', error);
+        // If short notes fail, use fallback but still try detailed notes
+        shortNotes = `Short Notes for: ${videoData.title || 'Educational Video'}\n\nKey Points:\n• Main concepts covered in the video\n• Important takeaways and insights\n• Practical applications discussed\n\nNote: Short notes generation encountered an issue. Please try again later.`;
+      }
 
-      // Step 3: Generate detailed notes
+      // Step 3: Generate detailed notes (with retry logic built-in)
       console.log('📚 Step 3: Generating detailed notes...');
-      const detailedNotes = await this.generateDetailedNotes(transcriptData.transcript, videoData);
+      let detailedNotes;
+      try {
+        detailedNotes = await this.generateDetailedNotes(transcriptData.transcript, videoData);
+      } catch (error) {
+        console.error('❌ Error generating detailed notes:', error);
+        // If detailed notes fail, use fallback
+        detailedNotes = `Detailed Notes for: ${videoData.title || 'Educational Video'}\n\nComprehensive Analysis:\n\n1. Main Content Summary:\n   • Overview of topics covered\n   • Key concepts and definitions\n   • Important methodologies discussed\n\n2. Additional Insights:\n   • Best practices and recommendations\n   • Common pitfalls to avoid\n   • Advanced concepts and applications\n\n3. Practical Applications:\n   • Real-world examples\n   • Step-by-step processes\n   • Implementation strategies\n\n4. Related Topics:\n   • Complementary concepts\n   • Further learning resources\n   • Advanced study areas\n\nNote: Detailed notes generation encountered an issue. Please try again later.`;
+      }
 
       // Step 4: Calculate read times
       const shortNotesWordCount = shortNotes.split(' ').length;
@@ -89,7 +103,22 @@ class NotesService {
       return notes;
     } catch (error) {
       console.error('❌ Error generating notes:', error);
-      throw error;
+      
+      // Provide user-friendly error messages
+      if (error.message && (
+        error.message.includes('overloaded') ||
+        error.message.includes('503') ||
+        error.message.includes('Service Unavailable') ||
+        error.message.includes('currently busy')
+      )) {
+        throw new Error('The AI service is currently overloaded. Please try generating notes again in a few moments.');
+      }
+      
+      if (error.message && error.message.includes('transcript')) {
+        throw error; // Re-throw transcript errors as-is (they're already user-friendly)
+      }
+      
+      throw new Error(`Failed to generate notes: ${error.message || 'Unknown error occurred. Please try again later.'}`);
     }
   }
 

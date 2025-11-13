@@ -64,7 +64,19 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
     });
   } catch (error) {
     console.error('Chat API error:', error);
-    res.status(500).json({
+    
+    // Return 503 for service unavailable/overloaded errors
+    const isServiceUnavailable = error.message && (
+      error.message.includes('overloaded') ||
+      error.message.includes('503') ||
+      error.message.includes('Service Unavailable') ||
+      error.message.includes('currently busy') ||
+      error.message.includes('try again in a few moments')
+    );
+    
+    const statusCode = isServiceUnavailable ? 503 : 500;
+    
+    res.status(statusCode).json({
       success: false,
       message: error.message || 'Failed to generate chat response'
     });
@@ -98,7 +110,19 @@ router.post('/quick', authenticateToken, asyncHandler(async (req, res) => {
     });
   } catch (error) {
     console.error('Quick chat API error:', error);
-    res.status(500).json({
+    
+    // Return 503 for service unavailable/overloaded errors
+    const isServiceUnavailable = error.message && (
+      error.message.includes('overloaded') ||
+      error.message.includes('503') ||
+      error.message.includes('Service Unavailable') ||
+      error.message.includes('currently busy') ||
+      error.message.includes('try again in a few moments')
+    );
+    
+    const statusCode = isServiceUnavailable ? 503 : 500;
+    
+    res.status(statusCode).json({
       success: false,
       message: error.message || 'Failed to generate chat response'
     });

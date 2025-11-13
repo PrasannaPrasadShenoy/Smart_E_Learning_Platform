@@ -22,7 +22,7 @@ const upload = multer({
  * Create a new quiz
  */
 const createQuiz = asyncHandler(async (req, res) => {
-  const { title, description, questions, timeLimit, passingScore, allowMultipleAttempts, showResults, metadata } = req.body;
+  const { title, description, questions, timeLimit, passingScore, allowMultipleAttempts, showResults, scheduledStartTime, scheduledEndTime, metadata } = req.body;
   const teacherId = req.user._id;
 
   if (!title || !questions || !Array.isArray(questions) || questions.length === 0) {
@@ -42,6 +42,8 @@ const createQuiz = asyncHandler(async (req, res) => {
       passingScore: passingScore || 60,
       allowMultipleAttempts: allowMultipleAttempts || false,
       showResults: showResults !== undefined ? showResults : true,
+      scheduledStartTime: scheduledStartTime ? new Date(scheduledStartTime) : null,
+      scheduledEndTime: scheduledEndTime ? new Date(scheduledEndTime) : null,
       metadata: metadata || {}
     });
 
@@ -72,11 +74,11 @@ const createQuiz = asyncHandler(async (req, res) => {
 });
 
 /**
- * Update a quiz (for draft quizzes)
+ * Update a quiz (allows editing any quiz owned by the teacher)
  */
 const updateQuiz = asyncHandler(async (req, res) => {
   const { quizId } = req.params;
-  const { title, description, questions, timeLimit, passingScore, allowMultipleAttempts, showResults, isDraft, isActive } = req.body;
+  const { title, description, questions, timeLimit, passingScore, allowMultipleAttempts, showResults, scheduledStartTime, scheduledEndTime, isDraft, isActive } = req.body;
   const teacherId = req.user._id;
 
   if (!title || !questions || !Array.isArray(questions) || questions.length === 0) {
@@ -104,6 +106,8 @@ const updateQuiz = asyncHandler(async (req, res) => {
     quiz.passingScore = passingScore || 60;
     quiz.allowMultipleAttempts = allowMultipleAttempts || false;
     quiz.showResults = showResults !== undefined ? showResults : true;
+    quiz.scheduledStartTime = scheduledStartTime ? new Date(scheduledStartTime) : null;
+    quiz.scheduledEndTime = scheduledEndTime ? new Date(scheduledEndTime) : null;
     
     if (isDraft !== undefined) {
       quiz.isDraft = isDraft;
@@ -383,6 +387,23 @@ const getQuizByKey = asyncHandler(async (req, res) => {
     }
 
     const quiz = quizKey.quizId;
+
+    // Check scheduled start time
+    const now = new Date();
+    if (quiz.scheduledStartTime && new Date(quiz.scheduledStartTime) > now) {
+      return res.status(400).json({
+        success: false,
+        message: `This quiz is not available yet. It will be available starting ${new Date(quiz.scheduledStartTime).toLocaleString()}`
+      });
+    }
+
+    // Check scheduled end time
+    if (quiz.scheduledEndTime && new Date(quiz.scheduledEndTime) < now) {
+      return res.status(400).json({
+        success: false,
+        message: `This quiz is no longer available. It ended on ${new Date(quiz.scheduledEndTime).toLocaleString()}`
+      });
+    }
 
     // Check if student already has an attempt
     const existingAttempt = await QuizAttempt.findOne({

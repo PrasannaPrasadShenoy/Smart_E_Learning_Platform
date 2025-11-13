@@ -72,6 +72,14 @@ const quizSchema = new mongoose.Schema({
     type: Boolean,
     default: true // Whether to show results immediately after submission
   },
+  scheduledStartTime: {
+    type: Date,
+    default: null // Optional: when the quiz should become available
+  },
+  scheduledEndTime: {
+    type: Date,
+    default: null // Optional: when the quiz should stop being available
+  },
   metadata: {
     category: String,
     tags: [String],

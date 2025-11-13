@@ -63,101 +63,101 @@ const LoginPage: React.FC = () => {
         <div className="card-elevated p-8">
           <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-5">
-              {/* Email */}
-              <div>
+            {/* Email */}
+            <div>
                 <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Email address
-                </label>
-                <input
-                  {...register('email', {
-                    required: 'Email is required',
-                    pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Invalid email address',
-                    },
-                  })}
-                  type="email"
+                Email address
+              </label>
+              <input
+                {...register('email', {
+                  required: 'Email is required',
+                  pattern: {
+                    value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                    message: 'Invalid email address',
+                  },
+                })}
+                type="email"
                   className="input w-full"
-                  placeholder="Enter your email"
-                />
-                {errors.email && (
+                placeholder="Enter your email"
+              />
+              {errors.email && (
                   <p className="mt-2 text-sm text-error-600 flex items-center gap-1">
                     <span>•</span>
                     {errors.email.message}
                   </p>
-                )}
-              </div>
+              )}
+            </div>
 
-              {/* Password */}
-              <div>
+            {/* Password */}
+            <div>
                 <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Password
-                </label>
+                Password
+              </label>
                 <div className="relative">
-                  <input
-                    {...register('password', {
-                      required: 'Password is required',
-                      minLength: {
-                        value: 6,
-                        message: 'Password must be at least 6 characters',
-                      },
-                    })}
-                    type={showPassword ? 'text' : 'password'}
+                <input
+                  {...register('password', {
+                    required: 'Password is required',
+                    minLength: {
+                      value: 6,
+                      message: 'Password must be at least 6 characters',
+                    },
+                  })}
+                  type={showPassword ? 'text' : 'password'}
                     className="input w-full pr-12"
-                    placeholder="Enter your password"
-                  />
-                  <button
-                    type="button"
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
                     className="absolute inset-y-0 right-0 pr-4 flex items-center hover:text-primary-600 transition-colors"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5 text-gray-400" />
-                    ) : (
-                      <Eye className="h-5 w-5 text-gray-400" />
-                    )}
-                  </button>
-                </div>
-                {errors.password && (
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5 text-gray-400" />
+                  ) : (
+                    <Eye className="h-5 w-5 text-gray-400" />
+                  )}
+                </button>
+              </div>
+              {errors.password && (
                   <p className="mt-2 text-sm text-error-600 flex items-center gap-1">
                     <span>•</span>
                     {errors.password.message}
                   </p>
-                )}
-              </div>
+              )}
             </div>
+          </div>
 
-            {/* Submit Button */}
-            <div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="btn btn-primary btn-lg w-full"
-              >
-                {isLoading ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Signing in...</span>
-                  </div>
-                ) : (
-                  'Sign in'
-                )}
-              </button>
-            </div>
+          {/* Submit Button */}
+          <div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="btn btn-primary btn-lg w-full"
+            >
+              {isLoading ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Signing in...</span>
+                </div>
+              ) : (
+                'Sign in'
+              )}
+            </button>
+          </div>
 
-            {/* Register Link */}
+          {/* Register Link */}
             <div className="text-center pt-4 border-t border-gray-200">
-              <p className="text-sm text-gray-600">
-                Don't have an account?{' '}
-                <Link
-                  to="/register"
+            <p className="text-sm text-gray-600">
+              Don't have an account?{' '}
+              <Link
+                to="/register"
                   className="font-semibold text-primary-600 hover:text-primary-700 transition-colors"
-                >
-                  Sign up here
-                </Link>
-              </p>
-            </div>
-          </form>
+              >
+                Sign up here
+              </Link>
+            </p>
+          </div>
+        </form>
         </div>
       </div>
     </div>

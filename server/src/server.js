@@ -25,6 +25,7 @@ const syncRoutes = require('./routes/syncRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const teacherRoutes = require('./routes/teacherRoutes');
 const quizRoutes = require('./routes/quizRoutes');
+const classroomRoutes = require('./routes/classroomRoutes');
 
 // Initialize Express app
 const app = express();
@@ -68,16 +69,16 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting
+// Rate limiting - configurable via environment variables
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: config.rateLimitWindowMs, // Default: 15 minutes (configurable via RATE_LIMIT_WINDOW_MS)
+  max: config.rateLimitMax, // Default: 500 requests per window (configurable via RATE_LIMIT_MAX)
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
   },
-  standardHeaders: true,
-  legacyHeaders: false,
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
 app.use('/api/', limiter);
@@ -122,6 +123,7 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/quiz', quizRoutes);
+app.use('/api/classrooms', classroomRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

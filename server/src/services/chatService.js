@@ -176,6 +176,16 @@ Please provide a helpful, accurate answer to the student's question using your k
     } catch (error) {
       console.error('Chat service error:', error);
       
+      // Handle 503 Service Unavailable / Overloaded errors (already retried by geminiService)
+      if (error.message && (
+        error.message.includes('overloaded') || 
+        error.message.includes('503') ||
+        error.message.includes('Service Unavailable') ||
+        error.message.includes('try again in a few moments')
+      )) {
+        throw new Error('The AI service is currently busy. Please try again in a few moments.');
+      }
+      
       // Network errors
       if (error.message && error.message.includes('Network error')) {
         throw new Error('Unable to connect to the AI service. Please check your internet connection and try again.');
@@ -192,7 +202,13 @@ Please provide a helpful, accurate answer to the student's question using your k
       }
 
       // Re-throw with original message if it's already a user-friendly error
-      if (error.message && (error.message.includes('Network error') || error.message.includes('Invalid Gemini') || error.message.includes('quota'))) {
+      if (error.message && (
+        error.message.includes('Network error') || 
+        error.message.includes('Invalid Gemini') || 
+        error.message.includes('quota') ||
+        error.message.includes('overloaded') ||
+        error.message.includes('currently busy')
+      )) {
         throw error;
       }
 

@@ -53,7 +53,7 @@ const courseKeySchema = new mongoose.Schema({
 });
 
 // Indexes for performance
-courseKeySchema.index({ key: 1 }, { unique: true });
+// Note: 'key' index is automatically created by unique: true in field definition
 courseKeySchema.index({ teacherId: 1 });
 courseKeySchema.index({ courseId: 1 });
 courseKeySchema.index({ isActive: 1, expiresAt: 1 });
