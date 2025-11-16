@@ -402,7 +402,9 @@ const completeAssessment = asyncHandler(async (req, res) => {
         cliClassification: cliResult.cliClassification,
         confidence,
         timeSpent: assessment.timeSpent,
-        assessmentId: assessment._id
+        assessmentId: assessment._id,
+        videoTitle: assessment.videoTitle || 'Unknown Video',
+        videoThumbnail: assessment.videoThumbnail || ''
       }
     );
     console.log('✅ Playlist progress updated successfully');

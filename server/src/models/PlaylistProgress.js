@@ -243,10 +243,25 @@ playlistProgressSchema.methods.updateVideoProgress = function(videoId, progressD
 
 // Add assessment attempt
 playlistProgressSchema.methods.addAssessmentAttempt = function(videoId, attemptData) {
-  const video = this.videos.find(v => v.videoId === videoId);
+  let video = this.videos.find(v => v.videoId === videoId);
   
+  // Create video entry if it doesn't exist
   if (!video) {
-    throw new Error('Video not found in playlist progress');
+    video = {
+      videoId,
+      videoTitle: attemptData.videoTitle || 'Unknown Video',
+      videoThumbnail: attemptData.videoThumbnail || '',
+      isCompleted: false,
+      watchTime: 0,
+      totalDuration: 0,
+      lastPosition: 0,
+      completionPercentage: 0,
+      attempts: [],
+      bestScore: 0,
+      averageScore: 0,
+      totalAttempts: 0
+    };
+    this.videos.push(video);
   }
   
   // Add new attempt

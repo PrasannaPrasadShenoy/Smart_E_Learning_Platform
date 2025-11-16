@@ -124,13 +124,14 @@ class CLIService {
    * @param {number} limit - Number of recent assessments to analyze
    * @returns {Promise<Object>} Trend analysis
    */
-  async analyzeUserTrends(userId, courseId = null, limit = 10) {
+  async analyzeUserTrends(userId, courseId = null, limit = 50) {
     try {
       const query = { userId, status: 'completed' };
       if (courseId) {
         query.courseId = courseId;
       }
 
+      // Get more assessments for better trend analysis
       const assessments = await Assessment.find(query)
         .sort({ createdAt: -1 })
         .limit(limit)
@@ -197,17 +198,57 @@ class CLIService {
   generateInsights(assessments) {
     const insights = [];
     
-    // Average CLI
-    const avgCLI = assessments.reduce((sum, a) => sum + a.cli, 0) / assessments.length;
-    insights.push({
-      type: 'average_cli',
-      value: Math.round(avgCLI * 100) / 100,
-      message: `Your average cognitive load is ${Math.round(avgCLI)}`
-    });
+    if (assessments.length === 0) {
+      return insights;
+    }
 
-    // Load distribution
+    // Helper function to calculate CLI classification from CLI value
+    const getCLIClassification = (cli) => {
+      if (cli === null || cli === undefined) return null;
+      if (cli <= 35) return 'Low Load';
+      if (cli <= 70) return 'Moderate Load';
+      return 'High Load';
+    };
+
+    // Average CLI
+    const validCLI = assessments.filter(a => a.cli !== null && a.cli !== undefined);
+    if (validCLI.length > 0) {
+      const avgCLI = validCLI.reduce((sum, a) => sum + (a.cli || 0), 0) / validCLI.length;
+      let cliMessage = `Your average cognitive load index is ${Math.round(avgCLI)}. `;
+      if (avgCLI <= 35) {
+        cliMessage += 'Great job maintaining low cognitive load!';
+      } else if (avgCLI <= 70) {
+        cliMessage += 'You are experiencing moderate cognitive load.';
+      } else {
+        cliMessage += 'Consider taking more breaks to reduce cognitive load.';
+      }
+      insights.push({
+        type: 'average_cli',
+        value: Math.round(avgCLI * 100) / 100,
+        message: cliMessage
+      });
+    }
+
+    // Average Test Score
+    const validScores = assessments.filter(a => a.testScore !== null && a.testScore !== undefined);
+    if (validScores.length > 0) {
+      const avgScore = validScores.reduce((sum, a) => sum + (a.testScore || 0), 0) / validScores.length;
+      insights.push({
+        type: 'average_score',
+        value: Math.round(avgScore * 100) / 100,
+        message: `Your average test score is ${Math.round(avgScore)}%. ${avgScore >= 80 ? 'Excellent performance! Keep up the great work!' : avgScore >= 60 ? 'Good progress! Keep practicing to improve further.' : 'Keep practicing and reviewing the material to improve your scores.'}`
+      });
+    }
+
+    // Load distribution - calculate classification from CLI if missing
     const loadDistribution = assessments.reduce((acc, a) => {
-      acc[a.cliClassification] = (acc[a.cliClassification] || 0) + 1;
+      let classification = a.cliClassification;
+      if (!classification && a.cli !== null && a.cli !== undefined) {
+        classification = getCLIClassification(a.cli);
+      }
+      if (classification) {
+        acc[classification] = (acc[classification] || 0) + 1;
+      }
       return acc;
     }, {});
 
@@ -215,45 +256,72 @@ class CLIService {
       .sort(([,a], [,b]) => b - a)[0];
 
     if (dominantLoad) {
+      const loadType = dominantLoad[0];
+      const count = dominantLoad[1];
+      const percentage = Math.round((count / assessments.length) * 100);
       insights.push({
         type: 'dominant_load',
-        value: dominantLoad[0],
-        message: `You typically experience ${dominantLoad[0].toLowerCase()}`
+        value: loadType,
+        message: `You typically experience ${loadType.toLowerCase()} (${percentage}% of your assessments). ${loadType === 'Low Load' ? 'This indicates good focus and manageable learning difficulty.' : loadType === 'Moderate Load' ? 'This suggests a balanced learning experience.' : 'Consider taking breaks and reviewing material at a slower pace.'}`
       });
     }
 
-    // Performance correlation
-    const highCLI = assessments.filter(a => a.cli > 70);
-    const highCLIPerformance = highCLI.reduce((sum, a) => sum + a.testScore, 0) / highCLI.length;
+    // Performance correlation - High CLI vs Low CLI
+    const highCLI = assessments.filter(a => a.cli !== null && a.cli !== undefined && a.cli > 70);
+    const lowCLI = assessments.filter(a => a.cli !== null && a.cli !== undefined && a.cli <= 35);
     
     if (highCLI.length > 0) {
+      const highCLIPerformance = highCLI.reduce((sum, a) => sum + (a.testScore || 0), 0) / highCLI.length;
       insights.push({
         type: 'performance_under_load',
         value: Math.round(highCLIPerformance),
-        message: `Your performance under high cognitive load: ${Math.round(highCLIPerformance)}%`
+        message: `When experiencing high cognitive load, your average score is ${Math.round(highCLIPerformance)}%. ${highCLIPerformance >= 70 ? 'You maintain good performance even under stress!' : 'Consider practicing relaxation techniques before assessments.'}`
       });
     }
 
-    // Improvement trend
-    if (assessments.length >= 3) {
-      const recent = assessments.slice(0, 3);
-      const older = assessments.slice(-3);
-      
-      const recentAvg = recent.reduce((sum, a) => sum + a.cli, 0) / recent.length;
-      const olderAvg = older.reduce((sum, a) => sum + a.cli, 0) / older.length;
-      
-      const improvement = olderAvg - recentAvg;
-      
-      if (Math.abs(improvement) > 5) {
+    if (lowCLI.length > 0 && highCLI.length > 0) {
+      const lowCLIPerformance = lowCLI.reduce((sum, a) => sum + (a.testScore || 0), 0) / lowCLI.length;
+      const highCLIPerformance = highCLI.reduce((sum, a) => sum + (a.testScore || 0), 0) / highCLI.length;
+      const difference = lowCLIPerformance - highCLIPerformance;
+      if (Math.abs(difference) > 5) {
         insights.push({
-          type: 'improvement_trend',
-          value: Math.round(improvement * 100) / 100,
-          message: improvement > 0 
-            ? `Your cognitive load has decreased by ${Math.round(improvement)} points`
-            : `Your cognitive load has increased by ${Math.round(Math.abs(improvement))} points`
+          type: 'performance_comparison',
+          value: Math.round(difference),
+          message: `You perform ${Math.round(difference)}% better when cognitive load is low. This shows the importance of staying focused and relaxed during assessments.`
         });
       }
     }
+
+    // Improvement trend
+    if (validCLI.length >= 2) {
+      const sortedByDate = [...validCLI].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      const midPoint = Math.floor(sortedByDate.length / 2);
+      const older = sortedByDate.slice(0, midPoint);
+      const recent = sortedByDate.slice(midPoint);
+      
+      if (older.length > 0 && recent.length > 0) {
+        const recentAvg = recent.reduce((sum, a) => sum + (a.cli || 0), 0) / recent.length;
+        const olderAvg = older.reduce((sum, a) => sum + (a.cli || 0), 0) / older.length;
+        const improvement = olderAvg - recentAvg; // Positive = improvement (lower CLI is better)
+        
+        if (Math.abs(improvement) > 2) {
+          insights.push({
+            type: 'improvement_trend',
+            value: Math.round(improvement * 100) / 100,
+            message: improvement > 0 
+              ? `Great progress! Your cognitive load has decreased by ${Math.round(improvement)} points, indicating improved focus and learning efficiency.`
+              : `Your cognitive load has increased by ${Math.round(Math.abs(improvement))} points. Consider taking more breaks and reviewing material at a comfortable pace.`
+          });
+        }
+      }
+    }
+
+    // Total assessments insight
+    insights.push({
+      type: 'total_assessments',
+      value: assessments.length,
+      message: `You've completed ${assessments.length} assessment${assessments.length > 1 ? 's' : ''}. ${assessments.length >= 10 ? 'Excellent consistency! Keep up the regular practice.' : assessments.length >= 5 ? 'Good progress! Continue taking assessments to track your improvement.' : 'Keep taking assessments to build a comprehensive learning profile.'}`
+    });
 
     return insights;
   }

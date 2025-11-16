@@ -1085,7 +1085,38 @@ const VideoPlayerPage: React.FC = () => {
                     
                     <div className="flex justify-center">
                       <button
-                        onClick={() => setNotes(null)}
+                        onClick={async () => {
+                          setNotes(null);
+                          // Regenerate notes with force flag using cached transcript
+                          try {
+                            setIsGeneratingNotes(true);
+                            setNotesGenerationProgress('🔄 Regenerating notes from cached transcript...');
+                            
+                            const response = await notesApi.post(`/notes/generate/${videoId}?force=true`, {
+                              videoData: {
+                                title: video?.title || 'Video',
+                                thumbnail: video?.thumbnail || '',
+                                duration: video?.duration || 'PT0S'
+                              }
+                            });
+                            
+                            if (response.data.success) {
+                              setNotes(response.data.data.notes);
+                              setNotesGenerationProgress('✅ Notes regenerated successfully!');
+                              toast.success('📝 Notes regenerated successfully!', {
+                                duration: 3000,
+                              });
+                            }
+                            setIsGeneratingNotes(false);
+                          } catch (error) {
+                            console.error('Error regenerating notes:', error);
+                            setIsGeneratingNotes(false);
+                            setNotesGenerationProgress('');
+                            toast.error('Failed to regenerate notes. Please try again.', {
+                              duration: 3000,
+                            });
+                          }
+                        }}
                         className="btn btn-outline text-sm"
                       >
                         🔄 Regenerate Notes

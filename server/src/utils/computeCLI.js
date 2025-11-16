@@ -144,17 +144,32 @@ const analyzeCLITrends = (assessments) => {
   let trend = 'stable';
   let improvement = 0;
   
-  if (cliValues.length >= 2) {
-    const recent = cliValues.slice(-3); // Last 3 assessments
-    const older = cliValues.slice(0, -3);
+  if (cliValues.length >= 4) {
+    // Use last 3 vs previous 3 for better comparison
+    const recent = cliValues.slice(0, 3); // Most recent 3 (sorted desc, so first 3)
+    const older = cliValues.slice(3, 6); // Previous 3
+    
+    if (recent.length >= 2 && older.length >= 2) {
+      const recentAvg = recent.reduce((sum, cli) => sum + (cli || 0), 0) / recent.length;
+      const olderAvg = older.reduce((sum, cli) => sum + (cli || 0), 0) / older.length;
+      improvement = olderAvg - recentAvg; // Positive = improvement (lower CLI is better)
+      
+      if (improvement > 2) trend = 'improving';
+      else if (improvement < -2) trend = 'declining';
+    }
+  } else if (cliValues.length >= 2) {
+    // For fewer assessments, compare first half vs second half
+    const midPoint = Math.floor(cliValues.length / 2);
+    const recent = cliValues.slice(0, midPoint);
+    const older = cliValues.slice(midPoint);
     
     if (recent.length > 0 && older.length > 0) {
-      const recentAvg = recent.reduce((sum, cli) => sum + cli, 0) / recent.length;
-      const olderAvg = older.reduce((sum, cli) => sum + cli, 0) / older.length;
+      const recentAvg = recent.reduce((sum, cli) => sum + (cli || 0), 0) / recent.length;
+      const olderAvg = older.reduce((sum, cli) => sum + (cli || 0), 0) / older.length;
       improvement = olderAvg - recentAvg;
       
-      if (improvement > 5) trend = 'improving';
-      else if (improvement < -5) trend = 'declining';
+      if (improvement > 2) trend = 'improving';
+      else if (improvement < -2) trend = 'declining';
     }
   }
 

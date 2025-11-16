@@ -11,6 +11,8 @@ import {
   AlertTriangle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { FaceMesh } from '@mediapipe/face_mesh'
+import { Camera } from '@mediapipe/camera_utils'
 
 interface Question {
   id: string
@@ -37,6 +39,20 @@ interface Metrics {
   eyeGazeStability: number
 }
 
+// Face Mesh Landmark Indices
+const LEFT_EYE_INDICES = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+const RIGHT_EYE_INDICES = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
+const LEFT_EYE_TOP = 159
+const LEFT_EYE_BOTTOM = 145
+const LEFT_EYE_LEFT = 33
+const LEFT_EYE_RIGHT = 133
+const RIGHT_EYE_TOP = 386
+const RIGHT_EYE_BOTTOM = 374
+const RIGHT_EYE_LEFT = 362
+const RIGHT_EYE_RIGHT = 263
+const NOSE_TIP = 1
+const FOREHEAD_CENTER = 10
+
 const AssessmentPage: React.FC = () => {
   const { assessmentId } = useParams<{ assessmentId: string }>()
   const location = useLocation()
@@ -54,7 +70,30 @@ const AssessmentPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const metricsIntervalRef = useRef<number | null>(null)
+  const faceMeshRef = useRef<FaceMesh | null>(null)
+  const cameraRef = useRef<Camera | null>(null)
   const navigate = useNavigate()
+  
+  // Tracking data for metrics calculation
+  const trackingDataRef = useRef<{
+    faceDetected: boolean
+    blinkCount: number
+    lastBlinkTime: number
+    headPositions: Array<{ x: number; y: number; z: number }>
+    eyePositions: Array<{ left: { x: number; y: number }; right: { x: number; y: number } }>
+    detectionCount: number
+    totalFrames: number
+    startTime: number
+  }>({
+    faceDetected: false,
+    blinkCount: 0,
+    lastBlinkTime: 0,
+    headPositions: [],
+    eyePositions: [],
+    detectionCount: 0,
+    totalFrames: 0,
+    startTime: Date.now()
+  })
 
   // Get return path from location state
   useEffect(() => {
@@ -80,6 +119,30 @@ const AssessmentPage: React.FC = () => {
       handleSubmitAssessment()
     }
   }, [timeLeft, assessment])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Stop metrics collection
+      if (metricsIntervalRef.current) {
+        clearInterval(metricsIntervalRef.current)
+      }
+      
+      // Stop camera and clean up MediaPipe resources
+      if (cameraRef.current) {
+        cameraRef.current.stop()
+      }
+      if (faceMeshRef.current) {
+        faceMeshRef.current.close()
+      }
+      
+      // Stop video stream
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream
+        stream.getTracks().forEach(track => track.stop())
+      }
+    }
+  }, [])
 
   const fetchAssessment = async () => {
     if (!assessmentId) return
@@ -120,8 +183,226 @@ const AssessmentPage: React.FC = () => {
     }
   }
 
+  // Calculate Eye Aspect Ratio (EAR) for blink detection
+  const calculateEAR = (landmarks: any[], eyeIndices: number[]): number => {
+    if (landmarks.length === 0) return 0
+    
+    // Get vertical distances
+    const vertical1 = Math.abs(
+      landmarks[eyeIndices[1]].y - landmarks[eyeIndices[5]].y
+    )
+    const vertical2 = Math.abs(
+      landmarks[eyeIndices[2]].y - landmarks[eyeIndices[4]].y
+    )
+    
+    // Get horizontal distance
+    const horizontal = Math.abs(
+      landmarks[eyeIndices[0]].x - landmarks[eyeIndices[3]].x
+    )
+    
+    // EAR formula
+    const ear = (vertical1 + vertical2) / (2.0 * horizontal)
+    return ear
+  }
+
+  // Calculate head position from face landmarks
+  const calculateHeadPosition = (landmarks: any[]): { x: number; y: number; z: number } => {
+    if (landmarks.length === 0) return { x: 0, y: 0, z: 0 }
+    
+    const noseTip = landmarks[NOSE_TIP]
+    const forehead = landmarks[FOREHEAD_CENTER]
+    
+    // Calculate head position relative to center (0.5, 0.5)
+    const x = noseTip.x - 0.5
+    const y = noseTip.y - 0.5
+    const z = Math.abs(noseTip.z || 0) // Depth estimation
+    
+    return { x, y, z }
+  }
+
+  // Calculate eye gaze position
+  const calculateEyeGaze = (landmarks: any[]): { left: { x: number; y: number }; right: { x: number; y: number } } => {
+    if (landmarks.length === 0) {
+      return { left: { x: 0.5, y: 0.5 }, right: { x: 0.5, y: 0.5 } }
+    }
+    
+    const leftEyeCenter = {
+      x: (landmarks[LEFT_EYE_LEFT].x + landmarks[LEFT_EYE_RIGHT].x) / 2,
+      y: (landmarks[LEFT_EYE_TOP].y + landmarks[LEFT_EYE_BOTTOM].y) / 2
+    }
+    
+    const rightEyeCenter = {
+      x: (landmarks[RIGHT_EYE_LEFT].x + landmarks[RIGHT_EYE_RIGHT].x) / 2,
+      y: (landmarks[RIGHT_EYE_TOP].y + landmarks[RIGHT_EYE_BOTTOM].y) / 2
+    }
+    
+    return { left: leftEyeCenter, right: rightEyeCenter }
+  }
+
+  // Process face mesh results
+  const onResults = useCallback((results: any) => {
+    const tracking = trackingDataRef.current
+    tracking.totalFrames++
+    
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+      const landmarks = results.multiFaceLandmarks[0]
+      tracking.faceDetected = true
+      tracking.detectionCount++
+      
+      // Calculate Eye Aspect Ratio for blink detection
+      const leftEAR = calculateEAR(landmarks, LEFT_EYE_INDICES)
+      const rightEAR = calculateEAR(landmarks, RIGHT_EYE_INDICES)
+      const avgEAR = (leftEAR + rightEAR) / 2
+      
+      // Blink detection: EAR drops below threshold (typically 0.25-0.3)
+      const BLINK_THRESHOLD = 0.25
+      const currentTime = Date.now()
+      
+      if (avgEAR < BLINK_THRESHOLD) {
+        // Only count as blink if enough time has passed since last blink (avoid multiple detections)
+        if (currentTime - tracking.lastBlinkTime > 200) {
+          tracking.blinkCount++
+          tracking.lastBlinkTime = currentTime
+          console.log('👁️ Blink detected! Total blinks:', tracking.blinkCount)
+        }
+      }
+      
+      // Track head position
+      const headPos = calculateHeadPosition(landmarks)
+      tracking.headPositions.push(headPos)
+      // Keep only last 30 positions for movement calculation
+      if (tracking.headPositions.length > 30) {
+        tracking.headPositions.shift()
+      }
+      
+      // Track eye gaze
+      const eyeGaze = calculateEyeGaze(landmarks)
+      tracking.eyePositions.push(eyeGaze)
+      // Keep only last 30 positions for stability calculation
+      if (tracking.eyePositions.length > 30) {
+        tracking.eyePositions.shift()
+      }
+    } else {
+      tracking.faceDetected = false
+    }
+  }, [])
+
+  // Define functions in dependency order: sendMetricsToServer -> collectMetrics -> startMetricsCollection -> startWebcam
+  const sendMetricsToServer = useCallback(async (metric: Metrics) => {
+    if (!assessmentId) {
+      console.warn('⚠️ No assessmentId, skipping metrics send')
+      return
+    }
+    
+    try {
+      await assessmentApi.post(`/assessments/${assessmentId}/metrics`, {
+        metrics: [metric]
+      })
+      console.log('✅ Metrics sent to server successfully')
+    } catch (error: any) {
+      console.error('❌ Error sending metrics:', error.response?.data || error.message)
+    }
+  }, [assessmentId])
+
+  const collectMetrics = useCallback(() => {
+    const tracking = trackingDataRef.current
+    
+    // Calculate on-screen percentage (face detection rate)
+    const onScreenPercentage = tracking.totalFrames > 0
+      ? (tracking.detectionCount / tracking.totalFrames) * 100
+      : 0
+    
+    // Calculate blink rate per minute
+    const elapsedMinutes = (Date.now() - tracking.startTime) / (1000 * 60)
+    const blinkRatePerMin = elapsedMinutes > 0
+      ? tracking.blinkCount / elapsedMinutes
+      : 0
+    
+    // Calculate head movement (variance in head positions)
+    let headMovement = 0
+    if (tracking.headPositions.length > 1) {
+      const positions = tracking.headPositions
+      const avgX = positions.reduce((sum, p) => sum + p.x, 0) / positions.length
+      const avgY = positions.reduce((sum, p) => sum + p.y, 0) / positions.length
+      const avgZ = positions.reduce((sum, p) => sum + p.z, 0) / positions.length
+      
+      const variance = positions.reduce((sum, p) => {
+        const dx = p.x - avgX
+        const dy = p.y - avgY
+        const dz = p.z - avgZ
+        return sum + Math.sqrt(dx * dx + dy * dy + dz * dz)
+      }, 0) / positions.length
+      
+      // Convert to percentage (0-100)
+      headMovement = Math.min(variance * 1000, 100)
+    }
+    
+    // Calculate eye gaze stability (variance in eye positions)
+    let eyeGazeStability = 100
+    if (tracking.eyePositions.length > 1) {
+      const positions = tracking.eyePositions
+      const leftEyeAvgX = positions.reduce((sum, p) => sum + p.left.x, 0) / positions.length
+      const leftEyeAvgY = positions.reduce((sum, p) => sum + p.left.y, 0) / positions.length
+      const rightEyeAvgX = positions.reduce((sum, p) => sum + p.right.x, 0) / positions.length
+      const rightEyeAvgY = positions.reduce((sum, p) => sum + p.right.y, 0) / positions.length
+      
+      const variance = positions.reduce((sum, p) => {
+        const leftDx = p.left.x - leftEyeAvgX
+        const leftDy = p.left.y - leftEyeAvgY
+        const rightDx = p.right.x - rightEyeAvgX
+        const rightDy = p.right.y - rightEyeAvgY
+        const leftDist = Math.sqrt(leftDx * leftDx + leftDy * leftDy)
+        const rightDist = Math.sqrt(rightDx * rightDx + rightDy * rightDy)
+        return sum + (leftDist + rightDist) / 2
+      }, 0) / positions.length
+      
+      // Convert to stability percentage (higher variance = lower stability)
+      eyeGazeStability = Math.max(100 - (variance * 500), 0)
+    }
+    
+    const newMetric: Metrics = {
+      timestamp: Date.now(),
+      avgOnScreen: Math.max(0, Math.min(100, onScreenPercentage)),
+      blinkRatePerMin: Math.max(0, blinkRatePerMin),
+      headMovement: Math.max(0, Math.min(100, headMovement)),
+      eyeGazeStability: Math.max(0, Math.min(100, eyeGazeStability))
+    }
+    
+    console.log('📊 Metrics collected:', {
+      frames: tracking.totalFrames,
+      detections: tracking.detectionCount,
+      onScreen: newMetric.avgOnScreen.toFixed(1) + '%',
+      blinks: tracking.blinkCount,
+      blinkRate: newMetric.blinkRatePerMin.toFixed(1) + '/min',
+      headMovement: newMetric.headMovement.toFixed(1) + '%',
+      eyeGazeStability: newMetric.eyeGazeStability.toFixed(1) + '%'
+    })
+    
+    setMetrics(prev => [...prev, newMetric])
+    
+    // Send metrics to server
+    sendMetricsToServer(newMetric)
+  }, [sendMetricsToServer])
+
+  const startMetricsCollection = useCallback(() => {
+    if (metricsIntervalRef.current) {
+      clearInterval(metricsIntervalRef.current)
+    }
+    metricsIntervalRef.current = window.setInterval(() => {
+      collectMetrics()
+    }, 2000) // Collect metrics every 2 seconds
+  }, [collectMetrics])
+
   const startWebcam = useCallback(async () => {
     try {
+      if (!videoRef.current || !canvasRef.current) {
+        console.error('❌ Video or canvas ref not available')
+        return
+      }
+      
+      console.log('🎥 Starting webcam and MediaPipe Face Mesh...')
+      
+      // Request webcam access first
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
           width: 640, 
@@ -132,48 +413,63 @@ const AssessmentPage: React.FC = () => {
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        setIsWebcamActive(true)
-        
-        // Start metrics collection
-        startMetricsCollection()
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = () => {
+              resolve(undefined)
+            }
+          }
+        })
       }
+      
+      // Initialize Face Mesh
+      const faceMesh = new FaceMesh({
+        locateFile: (file: string) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        }
+      })
+      
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      })
+      
+      faceMesh.onResults(onResults)
+      faceMeshRef.current = faceMesh
+      
+      console.log('✅ Face Mesh initialized')
+      
+      // Initialize Camera
+      const camera = new Camera(videoRef.current, {
+        onFrame: async () => {
+          if (videoRef.current && faceMeshRef.current) {
+            await faceMeshRef.current.send({ image: videoRef.current })
+          }
+        },
+        width: 640,
+        height: 480
+      })
+      
+      cameraRef.current = camera
+      await camera.start()
+      
+      console.log('✅ Camera started, face tracking active')
+      
+      setIsWebcamActive(true)
+      trackingDataRef.current.startTime = Date.now()
+      
+      // Start metrics collection
+      startMetricsCollection()
+      console.log('✅ Metrics collection started')
     } catch (error) {
-      console.error('Error accessing webcam:', error)
+      console.error('❌ Error accessing webcam:', error)
       toast.error('Unable to access webcam. Assessment will continue without cognitive tracking.')
     }
-  }, [])
+  }, [onResults, startMetricsCollection])
 
-  const startMetricsCollection = useCallback(() => {
-    metricsIntervalRef.current = setInterval(() => {
-      collectMetrics()
-    }, 2000) // Collect metrics every 2 seconds
-  }, [])
-
-  const collectMetrics = useCallback(() => {
-    // Simulate metrics collection (in real implementation, use MediaPipe)
-    const newMetric: Metrics = {
-      timestamp: Date.now(),
-      avgOnScreen: Math.random() * 20 + 80, // 80-100%
-      blinkRatePerMin: Math.random() * 10 + 15, // 15-25 blinks/min
-      headMovement: Math.random() * 30, // 0-30%
-      eyeGazeStability: Math.random() * 20 + 80 // 80-100%
-    }
-    
-    setMetrics(prev => [...prev, newMetric])
-    
-    // Send metrics to server
-    sendMetricsToServer(newMetric)
-  }, [])
-
-  const sendMetricsToServer = useCallback(async (metric: Metrics) => {
-    try {
-      await assessmentApi.post(`/assessments/${assessmentId}/metrics`, {
-        metrics: [metric]
-      })
-    } catch (error) {
-      console.error('Error sending metrics:', error)
-    }
-  }, [assessmentId])
 
   const handleAnswerSelect = (questionId: string, answer: string) => {
     setAnswers(prev => ({
@@ -208,6 +504,23 @@ const AssessmentPage: React.FC = () => {
     // Stop metrics collection
     if (metricsIntervalRef.current) {
       clearInterval(metricsIntervalRef.current)
+    }
+    
+    // Stop camera and clean up MediaPipe resources
+    if (cameraRef.current) {
+      cameraRef.current.stop()
+      cameraRef.current = null
+    }
+    if (faceMeshRef.current) {
+      faceMeshRef.current.close()
+      faceMeshRef.current = null
+    }
+    
+    // Stop video stream
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream
+      stream.getTracks().forEach(track => track.stop())
+      videoRef.current.srcObject = null
     }
 
     try {

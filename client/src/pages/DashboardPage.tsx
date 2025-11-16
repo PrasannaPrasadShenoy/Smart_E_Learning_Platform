@@ -42,16 +42,16 @@ ChartJS.register(
 
 interface Assessment {
   id: string
-  course: {
-    title: string
-    thumbnail: string
+  course?: {
+    title?: string
+    thumbnail?: string
   }
   videoId?: string
   videoTitle?: string
   testName?: string
   testScore: number
-  cli: number
-  cliClassification: string
+  cli?: number
+  cliClassification?: string
   confidence: number
   createdAt: string
 }
@@ -73,6 +73,7 @@ interface Insights {
 
 const DashboardPage: React.FC = () => {
   const [assessments, setAssessments] = useState<Assessment[]>([])
+  const [totalAssessments, setTotalAssessments] = useState<number>(0)
   const [insights, setInsights] = useState<Insights | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const { user, isLoading: authLoading, token } = useAuthStore()
@@ -124,11 +125,15 @@ const DashboardPage: React.FC = () => {
       setIsLoading(true)
       try {
         console.log('Fetching dashboard data for user:', userId)
-        // Fetch user assessments
-        const assessmentsResponse = await api.get(`/assessments/user/${userId}`)
+        // Fetch user assessments - get all assessments (limit 1000 to get all)
+        const assessmentsResponse = await api.get(`/assessments/user/${userId}`, {
+          params: { limit: 1000, page: 1 }
+        })
         const fetchedAssessments = assessmentsResponse.data.data.assessments || []
-        console.log('Fetched assessments:', fetchedAssessments.length)
+        const totalCount = assessmentsResponse.data.data.pagination?.totalAssessments || fetchedAssessments.length
+        console.log('Fetched assessments:', fetchedAssessments.length, 'Total:', totalCount)
         setAssessments(fetchedAssessments)
+        setTotalAssessments(totalCount)
 
         // Fetch insights
         const insightsResponse = await api.get(`/assessments/analytics/${userId}`)
@@ -164,7 +169,8 @@ const DashboardPage: React.FC = () => {
     return 'text-red-600'
   }
 
-  const getCLIClassificationColor = (classification: string) => {
+  const getCLIClassificationColor = (classification: string | null | undefined) => {
+    if (!classification) return 'bg-gray-100 text-gray-800'
     switch (classification) {
       case 'Low Load':
         return 'bg-green-100 text-green-800'
@@ -177,41 +183,87 @@ const DashboardPage: React.FC = () => {
     }
   }
 
-  // Chart data
+  // Calculate CLI classification from CLI value if not provided
+  const getCLIClassification = (cli: number | null | undefined, classification: string | null | undefined): string => {
+    if (classification) return classification
+    if (cli === null || cli === undefined) return 'N/A'
+    if (cli <= 35) return 'Low Load'
+    if (cli <= 70) return 'Moderate Load'
+    return 'High Load'
+  }
+
+  // Get course thumbnail with fallback
+  const getCourseThumbnail = (assessment: Assessment): string => {
+    // Try course thumbnail first
+    if (assessment.course?.thumbnail) {
+      return assessment.course.thumbnail
+    }
+    // Fallback to a better placeholder image (using a data URI for a simple gradient)
+    return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiM2MzY2RjEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM4QjVDQ0YiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2EpIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxOCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5Db3Vyc2UgSW1hZ2U8L3RleHQ+PC9zdmc+'
+  }
+
+  // Get course title with fallback
+  const getCourseTitle = (assessment: Assessment): string => {
+    if (assessment.course?.title) {
+      return assessment.course.title
+    }
+    if (assessment.testName) {
+      return assessment.testName
+    }
+    if (assessment.videoTitle) {
+      return assessment.videoTitle
+    }
+    return 'Unknown Course'
+  }
+
+  // Chart data - get recent 5 assessments (they're sorted newest first)
+  const recentAssessments = assessments.slice(0, 5).reverse() // Reverse to show oldest to newest
   const scoreData = {
-    labels: assessments.slice(-7).map((_, index) => `Test ${index + 1}`),
+    labels: recentAssessments.map((_, index) => `Test ${index + 1}`),
     datasets: [
       {
         label: 'Test Score',
-        data: assessments.slice(-7).map(a => {
+        data: recentAssessments.map(a => {
           const score = a.testScore
           return (score !== undefined && !isNaN(score)) ? score : 0
         }),
         borderColor: 'rgb(59, 130, 246)',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
         tension: 0.4,
+        fill: true,
       },
       {
         label: 'CLI',
-        data: assessments.slice(-7).map(a => {
+        data: recentAssessments.map(a => {
           const cli = a.cli
           return (cli !== undefined && !isNaN(cli)) ? cli : 0
         }),
         borderColor: 'rgb(239, 68, 68)',
         backgroundColor: 'rgba(239, 68, 68, 0.1)',
         tension: 0.4,
+        fill: true,
       },
     ],
   }
 
+  // Calculate CLI distribution - use classification if available, otherwise calculate from CLI
   const cliDistributionData = {
     labels: ['Low Load', 'Moderate Load', 'High Load'],
     datasets: [
       {
         data: [
-          assessments.filter(a => a.cliClassification === 'Low Load').length,
-          assessments.filter(a => a.cliClassification === 'Moderate Load').length,
-          assessments.filter(a => a.cliClassification === 'High Load').length,
+          assessments.filter(a => {
+            const classification = getCLIClassification(a.cli, a.cliClassification)
+            return classification === 'Low Load'
+          }).length,
+          assessments.filter(a => {
+            const classification = getCLIClassification(a.cli, a.cliClassification)
+            return classification === 'Moderate Load'
+          }).length,
+          assessments.filter(a => {
+            const classification = getCLIClassification(a.cli, a.cliClassification)
+            return classification === 'High Load'
+          }).length,
         ],
         backgroundColor: [
           'rgb(34, 197, 94)',
@@ -277,7 +329,7 @@ const DashboardPage: React.FC = () => {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600 mb-1">Total Assessments</p>
                   <p className="text-3xl font-bold text-gray-900">
-                    {assessments.length}
+                    {totalAssessments || assessments.length}
                   </p>
                 </div>
               </div>
@@ -359,7 +411,7 @@ const DashboardPage: React.FC = () => {
             </p>
           </div>
           <div className="card-content">
-            {assessments.length > 0 ? (
+            {assessments.length > 0 && recentAssessments.length > 0 ? (
               <Line data={scoreData} options={chartOptions} />
             ) : (
               <div className="flex items-center justify-center h-64 text-gray-500">
@@ -382,7 +434,46 @@ const DashboardPage: React.FC = () => {
           </div>
           <div className="card-content">
             {assessments.length > 0 ? (
-              <Doughnut data={cliDistributionData} options={{ responsive: true }} />
+              (() => {
+                const hasData = cliDistributionData.datasets[0].data.some(val => val > 0)
+                return hasData ? (
+                  <div className="flex justify-center items-center" style={{ height: '400px' }}>
+                    <div style={{ width: '380px', height: '380px' }}>
+                      <Doughnut 
+                        data={cliDistributionData} 
+                        options={{ 
+                          responsive: true,
+                          maintainAspectRatio: true,
+                          plugins: {
+                            legend: {
+                              position: 'bottom' as const,
+                            },
+                            tooltip: {
+                              callbacks: {
+                                label: function(context) {
+                                  const label = context.label || ''
+                                  const value = context.parsed || 0
+                                  const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
+                                  const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0
+                                  return `${label}: ${value} (${percentage}%)`
+                                }
+                              }
+                            }
+                          }
+                        }} 
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-64 text-gray-500">
+                    <div className="text-center">
+                      <Brain className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                      <p className="text-gray-600">No CLI data available yet</p>
+                      <p className="text-sm text-gray-500 mt-2">Complete assessments to see cognitive load distribution</p>
+                    </div>
+                  </div>
+                )
+              })()
             ) : (
               <div className="flex items-center justify-center h-64 text-gray-500">
                 <div className="text-center">
@@ -406,51 +497,62 @@ const DashboardPage: React.FC = () => {
         <div className="card-content">
           {assessments.length > 0 ? (
             <div className="space-y-3">
-              {assessments.slice(0, 5).map((assessment, index) => (
-                <div
-                  key={assessment.id}
-                  className="flex items-center p-5 border-2 border-gray-100 rounded-xl hover:border-primary-200 hover:shadow-md bg-white transition-all duration-300 group"
-                  style={{ animationDelay: `${index * 50}ms` }}
-                >
-                  <img
-                    src={assessment.course.thumbnail}
-                    alt={assessment.course.title}
-                    className="w-20 h-14 object-cover rounded-lg mr-5 shadow-sm group-hover:shadow-md transition-shadow duration-300"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-gray-900 line-clamp-1 mb-1">
-                      {assessment.testName || assessment.course.title}
-                    </h4>
-                    <p className="text-sm text-gray-600 line-clamp-1 mb-2">
-                      {assessment.videoTitle || assessment.course.title}
-                    </p>
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {new Date(assessment.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-6">
-                    <div className="text-center">
-                      <p className="text-xs font-medium text-gray-600 mb-1">Score</p>
-                      <p className={`text-xl font-bold ${getScoreColor(assessment.testScore || 0)}`}>
-                        {assessment.testScore !== undefined && !isNaN(assessment.testScore) ? assessment.testScore : 0}%
+              {assessments.slice(0, 5).map((assessment, index) => {
+                const courseTitle = getCourseTitle(assessment)
+                const courseThumbnail = getCourseThumbnail(assessment)
+                const cliClassification = getCLIClassification(assessment.cli, assessment.cliClassification)
+                
+                return (
+                  <div
+                    key={assessment.id}
+                    className="flex items-center p-5 border-2 border-gray-100 rounded-xl hover:border-primary-200 hover:shadow-md bg-white transition-all duration-300 group"
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    <img
+                      src={courseThumbnail}
+                      alt={courseTitle}
+                      className="w-20 h-14 object-cover rounded-lg mr-5 shadow-sm group-hover:shadow-md transition-shadow duration-300"
+                      onError={(e) => {
+                        // Fallback to a default placeholder if image fails to load
+                        const target = e.target as HTMLImageElement
+                        target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiM2MzY2RjEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM4QjVDQ0YiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2EpIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxOCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5Db3Vyc2UgSW1hZ2U8L3RleHQ+PC9zdmc+'
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-gray-900 line-clamp-1 mb-1">
+                        Assessment: {assessment.videoTitle || courseTitle}
+                      </h4>
+                      <p className="text-sm text-gray-600 line-clamp-1 mb-2">
+                        {courseTitle}
+                      </p>
+                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {new Date(assessment.createdAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <div className="text-center">
-                      <p className="text-xs font-medium text-gray-600 mb-1">CLI</p>
-                      <p className={`text-xl font-bold ${getCLIColor(assessment.cli || 0)}`}>
-                        {assessment.cli !== undefined && !isNaN(assessment.cli) ? Math.round(assessment.cli) : 0}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs font-medium text-gray-600 mb-1">Load</p>
-                      <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${getCLIClassificationColor(assessment.cliClassification)}`}>
-                        {assessment.cliClassification}
-                      </span>
+                    <div className="flex items-center space-x-6">
+                      <div className="text-center">
+                        <p className="text-xs font-medium text-gray-600 mb-1">Score</p>
+                        <p className={`text-xl font-bold ${getScoreColor(assessment.testScore || 0)}`}>
+                          {assessment.testScore !== undefined && !isNaN(assessment.testScore) ? assessment.testScore : 0}%
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs font-medium text-gray-600 mb-1">CLI</p>
+                        <p className={`text-xl font-bold ${getCLIColor(assessment.cli || 0)}`}>
+                          {assessment.cli !== undefined && !isNaN(assessment.cli) ? Math.round(assessment.cli) : 0}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs font-medium text-gray-600 mb-1">Load</p>
+                        <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${getCLIClassificationColor(cliClassification)}`}>
+                          {cliClassification}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="text-center py-16">

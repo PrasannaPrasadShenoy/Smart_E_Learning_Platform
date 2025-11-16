@@ -24,9 +24,12 @@ const generateNotes = asyncHandler(async (req, res) => {
   try {
     console.log(`📝 Generating notes for video: ${videoId}`);
     
+    // Check if regeneration is requested (force=true in query params or body)
+    const forceRegenerate = req.query.force === 'true' || req.body.force === true || req.body.regenerate === true;
+    
     // Check if notes already exist
     const existingNotes = await notesService.getNotes(userId, videoId);
-    if (existingNotes) {
+    if (existingNotes && !forceRegenerate) {
       return res.json({
         success: true,
         message: 'Notes already exist for this video',
@@ -34,7 +37,14 @@ const generateNotes = asyncHandler(async (req, res) => {
       });
     }
 
-    // Generate new notes
+    // If force regenerate, delete existing notes first
+    if (existingNotes && forceRegenerate) {
+      console.log(`🔄 Force regeneration requested, deleting existing notes...`);
+      await notesService.deleteNotes(userId, videoId);
+      console.log(`✅ Existing notes deleted, regenerating...`);
+    }
+
+    // Generate new notes (will use cached transcript from DB)
     const notes = await notesService.generateNotes(userId, videoId, videoData || {});
 
     res.json({

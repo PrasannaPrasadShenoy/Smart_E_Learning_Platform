@@ -95,7 +95,7 @@ Format as structured notes with clear sections. Make it comprehensive and educat
         timeout = 300000; // 5 minutes for large transcripts
       }
 
-      return await this.generateContent(prompt, { timeout, maxRetries: 3 });
+      return await this.generateContent(prompt, { timeout, maxRetries: 7 });
     } catch (error) {
       console.error('Gemini API error for detailed notes:', error);
       
@@ -705,9 +705,26 @@ Keep it under 200 words.`;
           break;
         }
         
-        // Calculate exponential backoff delay: 1s, 2s, 4s, etc.
-        const delayMs = Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10 seconds
-        console.log(`⚠️ Retryable error detected. Retrying in ${delayMs/1000}s... (attempt ${attempt + 1}/${maxRetries + 1})`);
+        // Check if it's a 503/overload error - use longer delays for these
+        const isOverloadError = error.message && (
+          error.message.includes('503') || 
+          error.message.includes('Service Unavailable') ||
+          error.message.includes('overloaded') ||
+          error.message.includes('try again later')
+        );
+        
+        // Calculate exponential backoff delay
+        let delayMs;
+        if (isOverloadError) {
+          // Longer delays for overload errors: 5s, 10s, 20s, 40s, 60s, 60s, 60s
+          const delays = [5000, 10000, 20000, 40000, 60000, 60000, 60000];
+          delayMs = delays[Math.min(attempt, delays.length - 1)];
+          console.log(`⚠️ Service overloaded (503). Waiting ${delayMs/1000}s before retry... (attempt ${attempt + 1}/${maxRetries + 1})`);
+        } else {
+          // Shorter delays for other retryable errors: 2s, 4s, 8s, max 10s
+          delayMs = Math.min(2000 * Math.pow(2, attempt), 10000);
+          console.log(`⚠️ Retryable error detected. Retrying in ${delayMs/1000}s... (attempt ${attempt + 1}/${maxRetries + 1})`);
+        }
         
         // Wait before retrying
         await this.sleep(delayMs);
